@@ -15,7 +15,7 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<UserRole | null>;
   register: (data: RegisterData) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -105,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = async (username: string, password: string): Promise<boolean> => {
+  const login = async (username: string, password: string): Promise<UserRole | null> => {
     const foundUser = mockUsers.find(
       (u) => u.username === username && u.password === password && u.status === 'active'
     );
@@ -114,9 +114,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { password: _, ...userWithoutPassword } = foundUser;
       setUser(userWithoutPassword);
       localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-      return true;
+      return foundUser.role;
     }
-    return false;
+    return null;
   };
 
   const register = async (data: RegisterData): Promise<boolean> => {
