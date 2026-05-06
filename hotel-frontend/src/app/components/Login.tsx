@@ -240,7 +240,7 @@ export function Login() {
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       errors.phone ? 'border-red-500' : 'border-gray-300'
                     }`}
-                    placeholder="0901234567"
+                    placeholder="0123456789"
                   />
                   {errors.phone && (
                     <p className="text-red-500 text-xs mt-1">{errors.phone}</p>
@@ -344,20 +344,6 @@ export function Login() {
               {isLogin ? 'Đăng nhập' : 'Đăng ký tài khoản'}
             </button>
           </form>
-
-          {/* Demo Accounts — Login only */}
-          {isLogin && (
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <p className="text-xs font-semibold text-blue-900 mb-2">Tài khoản demo:</p>
-              <div className="text-xs text-blue-700 space-y-1">
-                <p>• Admin: admin / admin123</p>
-                <p>• Quản lý: manager / manager123</p>
-                <p>• Lễ tân: receptionist / receptionist123</p>
-                <p>• Thủ kho: warehouse / warehouse123</p>
-                <p>• Khách hàng: customer / customer123</p>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
