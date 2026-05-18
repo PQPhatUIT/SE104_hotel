@@ -5,6 +5,7 @@ import { BookingProvider } from './context/BookingContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Sidebar } from './components/Sidebar';
 import { Login } from './components/Login';
+import { Register } from './components/Register';
 import { Unauthorized } from './components/Unauthorized';
 
 // Admin & Staff Pages
@@ -17,13 +18,13 @@ import { WarehouseManagement } from './components/WarehouseManagement';
 import { EmployeeManagement } from './components/EmployeeManagement';
 import { SystemManagement } from './components/SystemManagement';
 
-// Customer Pages
+// Customer & Public Pages
 import { CustomerDashboard } from './components/customer/CustomerDashboard';
 import { CustomerRooms } from './components/customer/CustomerRooms';
 import { CustomerBookings } from './components/customer/CustomerBookings';
 import { CustomerProfile } from './components/customer/CustomerProfile';
+import { ExploreRooms } from './components/ExploreRooms';
 
-/** Redirects authenticated users to the correct home page based on their role */
 function RoleBasedRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
@@ -43,10 +44,7 @@ function RoleBasedRedirect() {
 
 function AppLayout() {
   const { isAuthenticated } = useAuth();
-
-  if (!isAuthenticated) {
-    return <Login />;
-  }
+  if (!isAuthenticated) return <Login />;
 
   return (
     <BookingProvider>
@@ -54,109 +52,19 @@ function AppLayout() {
         <Sidebar />
         <main className="flex-1 overflow-y-auto">
           <Routes>
-            {/* Customer Routes */}
-            <Route
-              path="/customer-dashboard"
-              element={
-                <ProtectedRoute allowedRoles={['Khách hàng']}>
-                  <CustomerDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/customer-rooms"
-              element={
-                <ProtectedRoute allowedRoles={['Khách hàng']}>
-                  <CustomerRooms />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/customer-bookings"
-              element={
-                <ProtectedRoute allowedRoles={['Khách hàng']}>
-                  <CustomerBookings />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/customer-profile"
-              element={
-                <ProtectedRoute allowedRoles={['Khách hàng']}>
-                  <CustomerProfile />
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Staff & Management Routes */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute allowedRoles={['Quản lý', 'Admin', 'Thủ kho']}>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/rooms"
-              element={
-                <ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}>
-                  <RoomManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/bookings"
-              element={
-                <ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}>
-                  <BookingForm />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/customers"
-              element={
-                <ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}>
-                  <CustomerManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/payments"
-              element={
-                <ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}>
-                  <PaymentManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/warehouse"
-              element={
-                <ProtectedRoute allowedRoles={['Thủ kho', 'Quản lý', 'Admin']}>
-                  <WarehouseManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/employees"
-              element={
-                <ProtectedRoute allowedRoles={['Quản lý', 'Admin']}>
-                  <EmployeeManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/system"
-              element={
-                <ProtectedRoute allowedRoles={['Admin']}>
-                  <SystemManagement />
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Error Routes */}
+            <Route path="/customer-dashboard" element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerDashboard /></ProtectedRoute>} />
+            <Route path="/customer-rooms" element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerRooms /></ProtectedRoute>} />
+            <Route path="/customer-bookings" element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerBookings /></ProtectedRoute>} />
+            <Route path="/customer-profile" element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerProfile /></ProtectedRoute>} />
+            <Route path="/" element={<ProtectedRoute allowedRoles={['Quản lý', 'Admin', 'Thủ kho']}><Dashboard /></ProtectedRoute>} />
+            <Route path="/rooms" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><RoomManagement /></ProtectedRoute>} />
+            <Route path="/bookings" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><BookingForm /></ProtectedRoute>} />
+            <Route path="/customers" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><CustomerManagement /></ProtectedRoute>} />
+            <Route path="/payments" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><PaymentManagement /></ProtectedRoute>} />
+            <Route path="/warehouse" element={<ProtectedRoute allowedRoles={['Thủ kho', 'Quản lý', 'Admin']}><WarehouseManagement /></ProtectedRoute>} />
+            <Route path="/employees" element={<ProtectedRoute allowedRoles={['Quản lý', 'Admin']}><EmployeeManagement /></ProtectedRoute>} />
+            <Route path="/system" element={<ProtectedRoute allowedRoles={['Admin']}><SystemManagement /></ProtectedRoute>} />
             <Route path="/unauthorized" element={<Unauthorized />} />
-            {/* Catch-all: redirect to role-appropriate home */}
             <Route path="*" element={<RoleBasedRedirect />} />
           </Routes>
         </main>
@@ -171,6 +79,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/explore-rooms" element={<ExploreRooms />} />
           <Route path="/*" element={<AppLayout />} />
         </Routes>
         <Toaster position="top-right" richColors />
