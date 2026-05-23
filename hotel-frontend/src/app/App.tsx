@@ -25,9 +25,10 @@ import { CustomerBookings } from './components/customer/CustomerBookings';
 import { CustomerProfile } from './components/customer/CustomerProfile';
 import { ExploreRooms } from './components/ExploreRooms';
 
+// ── Redirect sau khi đăng nhập thành công → đúng trang theo role ──────────────
 function RoleBasedRedirect() {
   const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/explore-rooms" replace />;
   switch (user.role) {
     case 'Admin':
     case 'Quản lý':
@@ -42,9 +43,12 @@ function RoleBasedRedirect() {
   }
 }
 
+// ── Layout sau khi đăng nhập (có Sidebar + các route nội bộ) ─────────────────
 function AppLayout() {
   const { isAuthenticated } = useAuth();
-  if (!isAuthenticated) return <Login />;
+
+  // Chưa đăng nhập → trả về /explore-rooms thay vì hiện Login ngay
+  if (!isAuthenticated) return <Navigate to="/explore-rooms" replace />;
 
   return (
     <BookingProvider>
@@ -53,17 +57,17 @@ function AppLayout() {
         <main className="flex-1 overflow-y-auto">
           <Routes>
             <Route path="/customer-dashboard" element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerDashboard /></ProtectedRoute>} />
-            <Route path="/customer-rooms" element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerRooms /></ProtectedRoute>} />
-            <Route path="/customer-bookings" element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerBookings /></ProtectedRoute>} />
-            <Route path="/customer-profile" element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerProfile /></ProtectedRoute>} />
-            <Route path="/" element={<ProtectedRoute allowedRoles={['Quản lý', 'Admin', 'Thủ kho']}><Dashboard /></ProtectedRoute>} />
-            <Route path="/rooms" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><RoomManagement /></ProtectedRoute>} />
-            <Route path="/bookings" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><BookingForm /></ProtectedRoute>} />
+            <Route path="/customer-rooms"     element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerRooms /></ProtectedRoute>} />
+            <Route path="/customer-bookings"  element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerBookings /></ProtectedRoute>} />
+            <Route path="/customer-profile"   element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerProfile /></ProtectedRoute>} />
+            <Route path="/"          element={<ProtectedRoute allowedRoles={['Quản lý', 'Admin', 'Thủ kho']}><Dashboard /></ProtectedRoute>} />
+            <Route path="/rooms"     element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><RoomManagement /></ProtectedRoute>} />
+            <Route path="/bookings"  element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><BookingForm /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><CustomerManagement /></ProtectedRoute>} />
-            <Route path="/payments" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><PaymentManagement /></ProtectedRoute>} />
+            <Route path="/payments"  element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><PaymentManagement /></ProtectedRoute>} />
             <Route path="/warehouse" element={<ProtectedRoute allowedRoles={['Thủ kho', 'Quản lý', 'Admin']}><WarehouseManagement /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute allowedRoles={['Quản lý', 'Admin']}><EmployeeManagement /></ProtectedRoute>} />
-            <Route path="/system" element={<ProtectedRoute allowedRoles={['Admin']}><SystemManagement /></ProtectedRoute>} />
+            <Route path="/system"    element={<ProtectedRoute allowedRoles={['Admin']}><SystemManagement /></ProtectedRoute>} />
             <Route path="/unauthorized" element={<Unauthorized />} />
             <Route path="*" element={<RoleBasedRedirect />} />
           </Routes>
@@ -73,15 +77,19 @@ function AppLayout() {
   );
 }
 
+// ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          {/* Trang mặc định khi vào web lần đầu → xem phòng (không cần đăng nhập) */}
+          <Route path="/"              element={<Navigate to="/explore-rooms" replace />} />
           <Route path="/explore-rooms" element={<ExploreRooms />} />
-          <Route path="/*" element={<AppLayout />} />
+          <Route path="/login"         element={<Login />} />
+          <Route path="/register"      element={<Register />} />
+          {/* Mọi route nội bộ đều qua AppLayout (có kiểm tra auth) */}
+          <Route path="/*"             element={<AppLayout />} />
         </Routes>
         <Toaster position="top-right" richColors />
       </BrowserRouter>

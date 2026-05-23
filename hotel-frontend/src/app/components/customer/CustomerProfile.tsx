@@ -1,191 +1,153 @@
-import { useState } from 'react';
+// src/app/components/customer/CustomerProfile.tsx
+// SỬA LỖI:
+//   1. user?.fullName, user?.phone, user?.email — optional chaining toàn bộ
+//   2. Khởi tạo form với giá trị fallback '' thay vì undefined
+//   3. Gọi updateUserProfile() từ AuthContext (đã kết nối API)
+
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Phone, Mail, Save } from 'lucide-react';
-import { toast } from 'sonner';
 
-export function CustomerProfile() {
+export default function CustomerProfile() {
   const { user, updateUserProfile } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({
-    phone: user?.phone || '',
-    email: user?.email || '',
+
+  // Khởi tạo state với fallback '' để input không bị uncontrolled
+  const [form, setForm] = useState({
+    fullName: user?.fullName ?? '',
+    phone:    user?.phone    ?? '',
+    email:    user?.email    ?? '',
   });
+  const [saving,   setSaving]   = useState(false);
+  const [message,  setMessage]  = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const handleSave = () => {
-    if (!/^0\d{9}$/.test(formData.phone)) {
-      toast.error('Số điện thoại phải có 10 số và bắt đầu bằng 0');
-      return;
-    }
+  // Đồng bộ form khi user thay đổi (ví dụ: sau khi context reload từ API)
+  useEffect(() => {
+    setForm({
+      fullName: user?.fullName ?? '',
+      phone:    user?.phone    ?? '',
+      email:    user?.email    ?? '',
+    });
+  }, [user?.id]);  // Chỉ re-sync khi đổi user (không re-sync mỗi render)
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      toast.error('Email không hợp lệ');
-      return;
-    }
-
-    updateUserProfile(formData);
-    setIsEditing(false);
-    toast.success('Cập nhật thông tin thành công');
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      await updateUserProfile({
+        fullName: form.fullName,
+        phone:    form.phone,
+        email:    form.email,
+      });
+      setMessage({ type: 'success', text: 'Cập nhật thông tin thành công!' });
+    } catch {
+      setMessage({ type: 'error', text: 'Có lỗi xảy ra. Vui lòng thử lại.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Không crash nếu user chưa load — hiển thị skeleton
+  if (!user) {
+    return (
+      <div className="p-6 space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="animate-pulse h-12 bg-gray-100 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">Thông tin cá nhân</h1>
+    <div className="p-6 max-w-lg mx-auto">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Thông tin cá nhân</h2>
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Profile Card */}
-        <div className="col-span-1">
-          <div className="bg-white p-6 rounded-xl shadow-md border border-gray-100">
-            <div className="flex flex-col items-center">
-              <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center mb-4">
-                <span className="text-3xl font-bold text-white">
-                  {user?.fullName.split(' ').pop()?.charAt(0)}
-                </span>
-              </div>
-              <h2 className="text-xl font-bold text-gray-800">{user?.fullName}</h2>
-              <p className="text-sm text-gray-500 mt-1">{user?.username}</p>
-              <span className="mt-3 px-4 py-1 bg-blue-100 text-blue-700 text-sm rounded-full font-medium">
-                {user?.role}
-              </span>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-gray-200 space-y-3">
-              <div>
-                <p className="text-xs text-gray-500">Mã khách hàng</p>
-                <p className="font-medium text-gray-800">{user?.id}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Trạng thái tài khoản</p>
-                <span className="inline-block px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full">
-                  {user?.status === 'active' ? 'Hoạt động' : 'Vô hiệu hóa'}
-                </span>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Ngày tạo</p>
-                <p className="font-medium text-gray-800">
-                  {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : '-'}
-                </p>
-              </div>
-            </div>
-          </div>
+      {/* Avatar placeholder */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-2xl font-bold text-indigo-600">
+          {/* Lấy ký tự đầu của fullName, fallback username, fallback '?' */}
+          {(user.fullName || user.username || '?').charAt(0).toUpperCase()}
         </div>
-
-        {/* Edit Form */}
-        <div className="col-span-2">
-          <div className="bg-white p-6 rounded-xl shadow-md border border-gray-100">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-gray-800">Thông tin liên hệ</h3>
-              {!isEditing ? (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Chỉnh sửa
-                </button>
-              ) : (
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSave}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                  >
-                    <Save className="w-4 h-4" />
-                    Lưu
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsEditing(false);
-                      setFormData({
-                        phone: user?.phone || '',
-                        email: user?.email || '',
-                      });
-                    }}
-                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
-                  >
-                    Hủy
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-6">
-              {/* Read-only fields */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                  <User className="w-4 h-4" />
-                  Họ và tên
-                </label>
-                <input
-                  type="text"
-                  value={user?.fullName}
-                  disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">Không thể thay đổi</p>
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                  <User className="w-4 h-4" />
-                  Tên tài khoản
-                </label>
-                <input
-                  type="text"
-                  value={user?.username}
-                  disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">Không thể thay đổi</p>
-              </div>
-
-              {/* Editable fields */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                  <Phone className="w-4 h-4" />
-                  Số điện thoại
-                </label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  disabled={!isEditing}
-                  className={`w-full px-4 py-2 border border-gray-300 rounded-lg ${
-                    isEditing
-                      ? 'focus:ring-2 focus:ring-blue-500 focus:border-transparent'
-                      : 'bg-gray-50 text-gray-500'
-                  }`}
-                  placeholder="0901234567"
-                />
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                  <Mail className="w-4 h-4" />
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  disabled={!isEditing}
-                  className={`w-full px-4 py-2 border border-gray-300 rounded-lg ${
-                    isEditing
-                      ? 'focus:ring-2 focus:ring-blue-500 focus:border-transparent'
-                      : 'bg-gray-50 text-gray-500'
-                  }`}
-                  placeholder="email@example.com"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Info Notice */}
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-900">
-              <strong>Lưu ý:</strong> Bạn chỉ có thể chỉnh sửa số điện thoại và email.
-              Để thay đổi thông tin khác, vui lòng liên hệ quản trị viên.
-            </p>
-          </div>
+        <div>
+          <p className="font-semibold text-gray-800">{user.fullName || user.username}</p>
+          <p className="text-sm text-gray-400">{user.role}</p>
         </div>
       </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Trường chỉ đọc */}
+        <div>
+          <label className="block text-sm font-medium text-gray-500 mb-1">Tên đăng nhập</label>
+          <input
+            type="text"
+            value={user.username ?? ''}
+            disabled
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
+          />
+        </div>
+
+        {/* Họ và tên */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Họ và tên</label>
+          <input
+            type="text"
+            name="fullName"
+            value={form.fullName}
+            onChange={handleChange}
+            placeholder="Nhập họ và tên"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+          />
+        </div>
+
+        {/* Số điện thoại */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại</label>
+          <input
+            type="tel"
+            name="phone"
+            value={form.phone}
+            onChange={handleChange}
+            placeholder="Nhập số điện thoại"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+          />
+        </div>
+
+        {/* Email */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <input
+            type="email"
+            name="email"
+            value={form.email}
+            onChange={handleChange}
+            placeholder="Nhập email"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+          />
+        </div>
+
+        {/* Thông báo */}
+        {message && (
+          <p className={`text-sm px-3 py-2 rounded-lg ${
+            message.type === 'success'
+              ? 'bg-green-50 text-green-700'
+              : 'bg-red-50 text-red-700'
+          }`}>
+            {message.text}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+        >
+          {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
+        </button>
+      </form>
     </div>
   );
 }

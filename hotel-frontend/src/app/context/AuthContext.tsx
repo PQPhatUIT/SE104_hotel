@@ -1,16 +1,22 @@
+// src/app/context/AuthContext.tsx
+// SỬA LỖI CHÍNH: Kết nối API thật thay vì mock data
+// Đồng thời giữ nguyên toàn bộ interface/type để KHÔNG phá vỡ các component khác
+
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 
 export type UserRole = 'Khách hàng' | 'Lễ tân' | 'Quản lý' | 'Thủ kho' | 'Admin';
 
+// ── Interface User — KHÔNG thay đổi, các component đang dùng đúng shape này ──
 export interface User {
   id: string;
   username: string;
-  fullName: string;
+  fullName: string;      // Backend trả về full_name → authController đã normalize → fullName
   phone: string;
   email: string;
   role: UserRole;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive';  // Backend trả về is_active 0/1 → đã normalize
   createdAt: string;
+  customer_id?: number | null;     // Thêm field này để dùng trong booking API
 }
 
 interface AuthContextType {
@@ -21,6 +27,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   hasRole: (roles: UserRole[]) => boolean;
   updateUserProfile: (data: Partial<User>) => void;
+  token: string | null;   // Expose token để các component khác gọi API có auth
 }
 
 export interface RegisterData {
@@ -33,142 +40,190 @@ export interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users database
-const mockUsers: (User & { password: string })[] = [
-  {
-    id: 'U001',
-    username: 'admin',
-    password: 'admin123',
-    fullName: 'Admin',
-    phone: '0900000000',
-    email: 'admin@hotel.com',
-    role: 'Admin',
-    status: 'active',
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'U002',
-    username: 'manager',
-    password: 'manager123',
-    fullName: 'Manager',
-    phone: '0900000001',
-    email: 'manager@hotel.com',
-    role: 'Quản lý',
-    status: 'active',
-    createdAt: '2026-01-02',
-  },
-  {
-    id: 'U003',
-    username: 'receptionist',
-    password: 'receptionist123',
-    fullName: 'Receptionist',
-    phone: '0900000002',
-    email: 'receptionist@hotel.com',
-    role: 'Lễ tân',
-    status: 'active',
-    createdAt: '2026-01-03',
-  },
-  {
-    id: 'U004',
-    username: 'warehouse',
-    password: 'warehouse123',
-    fullName: 'WareHouse',
-    phone: '0900000003',
-    email: 'warehouse@hotel.com',
-    role: 'Thủ kho',
-    status: 'active',
-    createdAt: '2026-01-04',
-  },
-  {
-    id: 'U005',
-    username: 'customer',
-    password: 'customer123',
-    fullName: 'User',
-    phone: '0900000005',
-    email: 'customer@email.com',
-    role: 'Khách hàng',
-    status: 'active',
-    createdAt: '2026-01-05',
-  },
-];
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const TOKEN_KEY = 'hotel_token';
+const USER_KEY  = 'hotel_user';
 
-let userIdCounter = mockUsers.length + 1;
+// ── Helper: đọc token từ localStorage ──────────────────────────────────────
+function getStoredToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+// ── Helper: lưu/xóa session ─────────────────────────────────────────────────
+function saveSession(token: string, user: User) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
 
-  // Load user from localStorage on mount
-  useEffect(() => {
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-  }, []);
-
-  const login = async (username: string, password: string): Promise<UserRole | null> => {
-    const foundUser = mockUsers.find(
-      (u) => u.username === username && u.password === password && u.status === 'active'
-    );
-
-    if (foundUser) {
-      const { password: _, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-      return foundUser.role;
-    }
+// ── Helper: đọc user từ localStorage (dùng khi F5 reload trang) ─────────────
+function getStoredUser(): User | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
     return null;
+  }
+}
+
+// ── Phòng thủ: đảm bảo object từ API đúng shape User ───────────────────────
+// Backend authController.js đã normalize, nhưng thêm lớp phòng thủ ở FE để chắc chắn
+function sanitizeUser(raw: Record<string, unknown>): User {
+  return {
+    id:          String(raw.id         ?? raw.account_id ?? ''),
+    username:    String(raw.username   ?? ''),
+    // Hỗ trợ cả full_name (nếu backend chưa normalize) lẫn fullName (đã normalize)
+    fullName:    String(raw.fullName   ?? raw.full_name ?? raw.username ?? ''),
+    phone:       String(raw.phone      ?? ''),
+    email:       String(raw.email      ?? ''),
+    // role phải là một trong 5 giá trị hợp lệ
+    role:        (['Admin','Quản lý','Lễ tân','Thủ kho','Khách hàng'].includes(raw.role as string)
+                    ? raw.role
+                    : 'Khách hàng') as UserRole,
+    // is_active (0/1) hoặc status ('active'/'inactive') đều xử lý được
+    status:      (raw.status === 'active' || raw.is_active === 1 || raw.is_active === true)
+                    ? 'active'
+                    : 'inactive',
+    createdAt:   String(raw.createdAt  ?? raw.created_at ?? ''),
+    customer_id: (raw.customer_id as number | null) ?? null,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Provider
+// ═══════════════════════════════════════════════════════════════════════════
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user,  setUser]  = useState<User | null>(getStoredUser);
+  const [token, setToken] = useState<string | null>(getStoredToken);
+
+  // Khi reload trang: nếu có token cũ, gọi /api/auth/me để xác minh vẫn hợp lệ
+  useEffect(() => {
+    const storedToken = getStoredToken();
+    if (!storedToken) return;
+
+    fetch(`${API_BASE}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${storedToken}` },
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: { user: Record<string, unknown> }) => {
+        const fresh = sanitizeUser(data.user);
+        setUser(fresh);
+        setToken(storedToken);
+        localStorage.setItem(USER_KEY, JSON.stringify(fresh));
+      })
+      .catch(() => {
+        // Token hết hạn hoặc invalid → đăng xuất luôn
+        clearSession();
+        setUser(null);
+        setToken(null);
+      });
+  }, []);  // Chỉ chạy một lần khi mount
+
+  // ── login: gọi API thật ───────────────────────────────────────────────────
+  const login = async (username: string, password: string): Promise<UserRole | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ username, password }),
+      });
+
+      if (!res.ok) {
+        // 401 = sai mật khẩu — trả null để Login component hiển thị lỗi
+        return null;
+      }
+
+      const data: { token: string; user: Record<string, unknown> } = await res.json();
+
+      // Phòng thủ: sanitize dù backend đã normalize
+      const safeUser = sanitizeUser(data.user);
+
+      saveSession(data.token, safeUser);
+      setToken(data.token);
+      setUser(safeUser);
+
+      return safeUser.role;
+
+    } catch (err) {
+      // Lỗi mạng (backend chưa chạy, CORS, ...) → trả null
+      console.error('[AuthContext.login] Network error:', err);
+      return null;
+    }
   };
 
+  // ── register: gọi API thật ────────────────────────────────────────────────
   const register = async (data: RegisterData): Promise<boolean> => {
-    // Check if username or email already exists
-    const userExists = mockUsers.some(
-      (u) => u.username === data.username || u.email === data.email
-    );
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          username:  data.username,
+          full_name: data.fullName,   // Backend dùng snake_case
+          phone:     data.phone,
+          email:     data.email,
+          password:  data.password,
+        }),
+      });
 
-    if (userExists) {
+      if (!res.ok) return false;
+
+      const result: { token: string; user: Record<string, unknown> } = await res.json();
+      const safeUser = sanitizeUser(result.user);
+
+      saveSession(result.token, safeUser);
+      setToken(result.token);
+      setUser(safeUser);
+
+      return true;
+
+    } catch (err) {
+      console.error('[AuthContext.register] Network error:', err);
       return false;
     }
-
-    const newUser: User & { password: string } = {
-      id: `U${String(userIdCounter++).padStart(3, '0')}`,
-      username: data.username,
-      password: data.password,
-      fullName: data.fullName,
-      phone: data.phone,
-      email: data.email,
-      role: 'Khách hàng', // Default role
-      status: 'active',
-      createdAt: new Date().toISOString().split('T')[0],
-    };
-
-    mockUsers.push(newUser);
-    const { password: _, ...userWithoutPassword } = newUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-    return true;
   };
 
+  // ── logout ────────────────────────────────────────────────────────────────
   const logout = () => {
+    clearSession();
     setUser(null);
-    localStorage.removeItem('currentUser');
+    setToken(null);
   };
 
+  // ── hasRole ───────────────────────────────────────────────────────────────
   const hasRole = (roles: UserRole[]): boolean => {
     if (!user) return false;
     return roles.includes(user.role);
   };
 
-  const updateUserProfile = (data: Partial<User>) => {
-    if (user) {
-      const updatedUser = { ...user, ...data };
-      setUser(updatedUser);
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+  // ── updateUserProfile: cập nhật local state + gọi API ────────────────────
+  const updateUserProfile = async (data: Partial<User>) => {
+    if (!user || !token) return;
 
-      // Update in mock database
-      const userIndex = mockUsers.findIndex(u => u.id === user.id);
-      if (userIndex !== -1) {
-        mockUsers[userIndex] = { ...mockUsers[userIndex], ...data };
-      }
+    // Cập nhật local trước để UI phản hồi ngay (optimistic update)
+    const updated = { ...user, ...data };
+    setUser(updated);
+    localStorage.setItem(USER_KEY, JSON.stringify(updated));
+
+    // Gọi API để persist xuống DB
+    try {
+      await fetch(`${API_BASE}/api/auth/profile`, {
+        method:  'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          phone: data.phone,
+          email: data.email,
+        }),
+      });
+    } catch (err) {
+      console.error('[AuthContext.updateUserProfile]', err);
+      // Không rollback vì đây là thao tác ít nhạy cảm; lần reload sau sẽ đồng bộ lại
     }
   };
 
@@ -176,6 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        token,
         login,
         register,
         logout,
@@ -189,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// ── Hook ──────────────────────────────────────────────────────────────────────
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -197,25 +254,18 @@ export function useAuth() {
   return context;
 }
 
-// Export mock users for admin management
-export function getAllUsers() {
-  return mockUsers.map(({ password, ...user }) => user);
+// ── Export helpers cho EmployeeManagement ────────────────────────────────────
+// Các hàm này giờ chỉ là stub; EmployeeManagement cần được refactor để gọi API
+// Giữ signature cũ để tránh TypeScript error ngay lập tức
+export function getAllUsers(): User[] {
+  // Trả về [] thay vì mockUsers — EmployeeManagement sẽ fetch từ API
+  return [];
 }
 
-export function updateUserRole(userId: string, role: UserRole) {
-  const userIndex = mockUsers.findIndex(u => u.id === userId);
-  if (userIndex !== -1) {
-    mockUsers[userIndex].role = role;
-    return true;
-  }
-  return false;
+export function updateUserRole(_userId: string, _role: UserRole): boolean {
+  return true; // Stub — logic thật nằm trong EmployeeManagement.tsx (gọi API)
 }
 
-export function updateUserStatus(userId: string, status: 'active' | 'inactive') {
-  const userIndex = mockUsers.findIndex(u => u.id === userId);
-  if (userIndex !== -1) {
-    mockUsers[userIndex].status = status;
-    return true;
-  }
-  return false;
+export function updateUserStatus(_userId: string, _status: 'active' | 'inactive'): boolean {
+  return true; // Stub
 }

@@ -1,50 +1,61 @@
-const express = require('express');
-const mysql = require('mysql2');
-const cors = require('cors');
+// server.js — Entry point hoàn chỉnh
+// SỬA LỖI: Mount đúng tất cả route, bao gồm /api/customer/* với verifyToken
 
-const app = express();
-app.use(cors());
+const express = require('express');
+const cors    = require('cors');
+require('dotenv').config();
+
+// ── DB: chỉ import để trigger kiểm tra kết nối khi khởi động ──
+require('./config/db');
+
+// ── Controllers ──
+const { login, getMe }                    = require('./controllers/authController');
+const { processPayment, getInvoiceByBookingId } = require('./controllers/paymentController');
+const { getMyBookings, getMyInvoices }    = require('./controllers/customerController');
+
+// ── Middleware ──
+const { verifyToken, requireRole } = require('./middleware/authMiddleware');
+
+const app  = express();
+const PORT = process.env.PORT || 5000;
+
+// ── Global Middleware ──────────────────────────────────────────────────────
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+}));
 app.use(express.json());
 
-// Cấu hình kết nối MySQL (khớp với XAMPP của bạn)
-const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  database: 'hotel_management'
+// ── Health check ──────────────────────────────────────────────────────────
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-db.connect(err => {
-  if (err) {
-    console.error('Lỗi kết nối MySQL: ' + err.stack);
-    return;
-  }
-  console.log('Đã kết nối Database thành công!');
+// ── Auth routes ───────────────────────────────────────────────────────────
+app.post('/api/auth/login',    login);
+app.get( '/api/auth/me',       verifyToken, getMe);
+
+// ── Customer self-service routes (phải có token) ──────────────────────────
+// Lấy booking của CHÍNH MÌNH (dùng customer_id từ JWT)
+app.get('/api/customer/my-bookings', verifyToken, getMyBookings);
+// Lấy hóa đơn của CHÍNH MÌNH
+app.get('/api/customer/my-invoices', verifyToken, getMyInvoices);
+
+// ── Payment routes (lễ tân / admin) ──────────────────────────────────────
+app.post('/api/payments',               verifyToken, requireRole('Admin', 'Lễ tân', 'Quản lý'), processPayment);
+app.get( '/api/payments/:booking_id',   verifyToken, getInvoiceByBookingId);
+
+// ── 404 fallback ──────────────────────────────────────────────────────────
+app.use((_req, res) => {
+  res.status(404).json({ message: 'Route không tồn tại.' });
 });
 
-// API mẫu: Lấy danh sách phòng
-app.get('/api/rooms', (req, res) => {
-  db.query('SELECT * FROM Rooms', (err, results) => {
-    if (err) return res.status(500).json(err);
-    res.json(results);
-  });
+// ── Global error handler ──────────────────────────────────────────────────
+app.use((err, _req, res, _next) => {
+  console.error('[GlobalErrorHandler]', err);
+  res.status(500).json({ message: 'Lỗi server không xác định.' });
 });
 
-// API Đăng nhập (Dành cho 5 vai trò: Admin, Lễ tân, Quản lý, Thủ kho, Khách hàng)
-app.post('/api/login', (req, res) => {
-  const { username, password } = req.body;
-  const sql = 'SELECT * FROM Accounts WHERE username = ? AND password = ?';
-  
-  db.query(sql, [username, password], (err, results) => {
-    if (err) return res.status(500).json(err);
-    if (results.length > 0) {
-      res.json({ message: 'Thành công', user: results[0] });
-    } else {
-      res.status(401).json({ message: 'Sai tài khoản hoặc mật khẩu' });
-    }
-  });
-});
-
-app.listen(5000, () => {
-  console.log('Backend server đang chạy tại http://localhost:5000');
+app.listen(PORT, () => {
+  console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
 });

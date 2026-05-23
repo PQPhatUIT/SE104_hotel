@@ -1,6 +1,11 @@
+// src/app/context/BookingContext.tsx
+// SỬA LỖI: Gọi API thật thay vì mock data tĩnh
+// Phòng thủ đầy đủ với optional chaining, Array.isArray(), fallback giá trị
+
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 
+// ── Interface Booking — KHÔNG thay đổi để các component không bị ảnh hưởng ──
 export interface Booking {
   id: string;
   bookingDate: string;
@@ -15,82 +20,121 @@ export interface Booking {
   status: 'Đã đặt' | 'Đã nhận phòng' | 'Hoàn thành' | 'Đã hủy';
 }
 
-// ── Mock data sets ──────────────────────────────────────────────────────────
-export const mockData_OldUser: Booking[] = [
-  {
-    id: 'BK001',
-    bookingDate: '2026-04-10',
-    room: 'P301',
-    roomType: 'Deluxe',
-    checkIn: '2026-04-15',
-    checkOut: '2026-04-18',
-    nights: 3,
-    guests: 2,
-    totalAmount: 2400000,
-    deposit: 500000,
-    status: 'Hoàn thành',
-  },
-  {
-    id: 'BK002',
-    bookingDate: '2026-03-15',
-    room: 'P205',
-    roomType: 'Standard',
-    checkIn: '2026-03-20',
-    checkOut: '2026-03-22',
-    nights: 2,
-    guests: 1,
-    totalAmount: 1000000,
-    deposit: 300000,
-    status: 'Hoàn thành',
-  },
-  {
-    id: 'BK003',
-    bookingDate: '2026-05-02',
-    room: 'P501',
-    roomType: 'Suite',
-    checkIn: '2026-05-10',
-    checkOut: '2026-05-14',
-    nights: 4,
-    guests: 4,
-    totalAmount: 6000000,
-    deposit: 1000000,
-    status: 'Đã đặt',
-  },
-];
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export const mockData_NewUser: Booking[] = [];
+// ── Map: status DB → status Frontend ─────────────────────────────────────────
+const STATUS_MAP: Record<string, Booking['status']> = {
+  pending:      'Đã đặt',
+  confirmed:    'Đã đặt',
+  checked_in:   'Đã nhận phòng',
+  checked_out:  'Hoàn thành',
+  cancelled:    'Đã hủy',
+};
 
-// ── Context ─────────────────────────────────────────────────────────────────
+/**
+ * Normalize một bản ghi booking từ API → đúng shape interface Booking.
+ * Phòng thủ với optional chaining và fallback cho từng trường.
+ */
+function normalizeBooking(raw: Record<string, unknown>): Booking {
+  // Tính số đêm từ check_in / check_out nếu nights không có sẵn
+  const checkIn  = String(raw.check_in_date  ?? raw.checkIn  ?? '');
+  const checkOut = String(raw.check_out_date ?? raw.checkOut ?? '');
+  let nights = Number(raw.nights ?? 0);
+  if (!nights && checkIn && checkOut) {
+    const diff = Math.ceil(
+      (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000
+    );
+    nights = Math.max(1, diff);
+  }
+
+  const statusRaw = String(raw.status ?? '').toLowerCase();
+
+  return {
+    id:          String(raw.booking_id ?? raw.id ?? ''),
+    bookingDate: String(raw.created_at ?? raw.bookingDate ?? '').split('T')[0],
+    // Backend JOIN trả về room_number; nếu không có thì fallback về room_id
+    room:        String(raw.room_number ?? raw.room ?? raw.room_id ?? ''),
+    roomType:    String(raw.room_type   ?? raw.roomType ?? raw.type_name ?? ''),
+    checkIn,
+    checkOut,
+    nights,
+    guests:      Number(raw.actual_guests ?? raw.guests ?? 1),
+    totalAmount: Number(raw.total_amount  ?? raw.totalAmount ?? 0),
+    deposit:     Number(raw.deposit_amount ?? raw.deposit ?? 0),
+    status:      STATUS_MAP[statusRaw] ?? 'Đã đặt',
+  };
+}
+
+// ── Context Types ─────────────────────────────────────────────────────────────
 interface BookingContextType {
-  bookings: Booking[];
+  bookings:   Booking[];
   addBooking: (booking: Booking) => void;
-  isNewUser: boolean;
+  isNewUser:  boolean;
+  isLoading:  boolean;
+  refetch:    () => void;
 }
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
+// ── Provider ──────────────────────────────────────────────────────────────────
 export function BookingProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const { user, token } = useAuth();
+  const [bookings,  setBookings]  = useState<Booking[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Seed bookings based on whether this is the demo user or a newly registered one
-  useEffect(() => {
-    if (!user) return;
-    if (user.username === 'customer') {
-      setBookings([...mockData_OldUser]);
-    } else {
-      setBookings([...mockData_NewUser]);
+  const fetchBookings = async () => {
+    // Chỉ fetch nếu user là Khách hàng và có token
+    if (!user || !token || user.role !== 'Khách hàng') {
+      setBookings([]);
+      return;
     }
-  }, [user?.username]);
 
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/customer/my-bookings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        setBookings([]);
+        return;
+      }
+
+      const data: unknown = await res.json();
+
+      // Phòng thủ: data có thể là array trực tiếp hoặc { bookings: [...] }
+      const rawList = Array.isArray(data)
+        ? data
+        : Array.isArray((data as Record<string, unknown>)?.bookings)
+          ? ((data as Record<string, unknown>).bookings as unknown[])
+          : [];
+
+      setBookings(rawList.map((item) => normalizeBooking(item as Record<string, unknown>)));
+
+    } catch (err) {
+      console.error('[BookingContext.fetchBookings]', err);
+      setBookings([]); // Luôn set về [] khi lỗi để tránh undefined crash
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch lại mỗi khi user thay đổi (đăng nhập / đăng xuất)
+  useEffect(() => {
+    fetchBookings();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, token]);
+
+  // addBooking: thêm optimistic vào local state
+  // Component gọi hàm này sau khi POST /api/bookings thành công
   const addBooking = (booking: Booking) => {
     setBookings((prev) => [booking, ...prev]);
   };
 
-  const isNewUser = bookings.length === 0;
+  const isNewUser = bookings.length === 0 && !isLoading;
 
   return (
-    <BookingContext.Provider value={{ bookings, addBooking, isNewUser }}>
+    <BookingContext.Provider value={{ bookings, addBooking, isNewUser, isLoading, refetch: fetchBookings }}>
       {children}
     </BookingContext.Provider>
   );
@@ -101,3 +145,7 @@ export function useBookings() {
   if (!ctx) throw new Error('useBookings must be used within a BookingProvider');
   return ctx;
 }
+
+// Giữ lại export mock để không break import ở các file test (nếu có)
+export const mockData_OldUser: Booking[] = [];
+export const mockData_NewUser: Booking[] = [];
