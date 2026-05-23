@@ -19,10 +19,10 @@ import { EmployeeManagement } from './components/EmployeeManagement';
 import { SystemManagement } from './components/SystemManagement';
 
 // Customer & Public Pages
-import { CustomerDashboard } from './components/customer/CustomerDashboard';
+import CustomerDashboard from './components/customer/CustomerDashboard';
 import { CustomerRooms } from './components/customer/CustomerRooms';
-import { CustomerBookings } from './components/customer/CustomerBookings';
-import { CustomerProfile } from './components/customer/CustomerProfile';
+import CustomerBookings from './components/customer/CustomerBookings';
+import CustomerProfile from './components/customer/CustomerProfile';
 import { ExploreRooms } from './components/ExploreRooms';
 
 // ── Redirect sau khi đăng nhập thành công → đúng trang theo role ──────────────

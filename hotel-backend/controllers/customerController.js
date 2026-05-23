@@ -1,29 +1,27 @@
-// controllers/customerController.js
-// API cho khách hàng: tra cứu booking và hóa đơn của CHÍNH MÌNH
-// Yêu cầu: verifyToken middleware trước tất cả route trong file này
+// controllers/customerController.js — ĐÃ SỬA HOÀN CHỈNH
+//
+// LỖI ĐÃ SỬA:
+//   ✅ const [rows] = await db.query(...)      → const rows = await db.query(...)
+//   ✅ const [[{ total }]] = await db.query(...)  → const countRows = await db.query(...) / total = countRows[0].total
+//   ✅ DATEDIFF(check_out, check_in) MySQL    → DATEDIFF(DAY, check_in, check_out) T-SQL
+//   ✅ LIMIT ? OFFSET ? MySQL                 → OFFSET ? ROWS FETCH NEXT ? ROWS ONLY T-SQL
+//   ✅ rt.id MySQL alias                      → rt.room_type_id (đúng tên cột schema)
 
 const db = require('../config/db');
 
-/**
- * GET /api/customer/my-bookings
- * Trả về danh sách booking của khách hàng đang đăng nhập.
- * Lọc theo customer_id từ JWT — tuyệt đối không lộ dữ liệu người khác.
- *
- * Response trả về đúng shape normalizeBooking() trong BookingContext.tsx:
- *   booking_id, room_number, type_name (as room_type), check_in_date,
- *   check_out_date, actual_guests, deposit_amount, total_amount, status, created_at
- */
+// ── GET /api/customer/my-bookings ────────────────────────────
 const getMyBookings = async (req, res) => {
-  // customer_id lấy từ JWT payload (đã set trong authController.login)
   const customerId = req.user?.customer_id;
 
   if (!customerId) {
-    // Tài khoản nhân viên không có customer_id → không có booking
     return res.json({ bookings: [] });
   }
 
   try {
-    const [rows] = await db.query(
+    // ✅ SỬA LỖI 1: bỏ dấu []
+    // ✅ SỬA LỖI 2: DATEDIFF(DAY, col1, col2) cho T-SQL (MySQL: DATEDIFF(col2, col1))
+    // ✅ SỬA LỖI 3: rt.room_type_id thay vì rt.id
+    const rows = await db.query(
       `SELECT
          b.booking_id,
          b.check_in_date,
@@ -35,21 +33,19 @@ const getMyBookings = async (req, res) => {
          r.room_number,
          rt.type_name,
          rt.base_price,
-         -- Tính total_amount: ưu tiên lấy từ Invoices nếu đã có, còn không ước tính
          COALESCE(
            inv.total_amount,
-           DATEDIFF(b.check_out_date, b.check_in_date) * rt.base_price - b.deposit_amount
+           DATEDIFF(DAY, b.check_in_date, b.check_out_date) * rt.base_price - b.deposit_amount
          ) AS total_amount
        FROM Bookings b
        JOIN Rooms      r   ON b.room_id      = r.room_id
-       JOIN Room_Types rt  ON r.room_type_id = rt.id
+       JOIN Room_Types rt  ON r.room_type_id = rt.room_type_id
        LEFT JOIN Invoices inv ON b.booking_id = inv.booking_id
        WHERE b.customer_id = ?
        ORDER BY b.created_at DESC`,
-      [customerId]
+      [parseInt(customerId, 10)]
     );
 
-    // Trả về mảng trực tiếp (BookingContext.tsx xử lý được cả array và {bookings:[...]})
     res.json(rows);
 
   } catch (err) {
@@ -58,11 +54,7 @@ const getMyBookings = async (req, res) => {
   }
 };
 
-/**
- * GET /api/customer/my-invoices
- * Trả về danh sách hóa đơn của khách hàng đang đăng nhập.
- * Phân trang: ?page=1&limit=10
- */
+// ── GET /api/customer/my-invoices ────────────────────────────
 const getMyInvoices = async (req, res) => {
   const customerId = req.user?.customer_id;
 
@@ -70,22 +62,24 @@ const getMyInvoices = async (req, res) => {
     return res.json({ invoices: [], total: 0 });
   }
 
-  // Phân trang an toàn — parseInt với fallback
-  const page  = Math.max(1, parseInt(String(req.query.page  ?? '1'),  10) || 1);
-  const limit = Math.min(50, parseInt(String(req.query.limit ?? '10'), 10) || 10);
+  const page   = Math.max(1, parseInt(String(req.query.page  ?? '1'),  10) || 1);
+  const limit  = Math.min(50, parseInt(String(req.query.limit ?? '10'), 10) || 10);
   const offset = (page - 1) * limit;
 
   try {
-    // Đếm tổng để trả về pagination info
-    const [[{ total }]] = await db.query(
+    // ✅ SỬA LỖI: bỏ [[{ total }]], dùng countRows[0].total
+    const countRows = await db.query(
       `SELECT COUNT(*) AS total
        FROM Invoices i
        JOIN Bookings b ON i.booking_id = b.booking_id
        WHERE b.customer_id = ?`,
-      [customerId]
+      [parseInt(customerId, 10)]
     );
+    const total = countRows[0]?.total ?? 0;
 
-    const [rows] = await db.query(
+    // ✅ SỬA LỖI: LIMIT/OFFSET MySQL → OFFSET...FETCH T-SQL
+    // ✅ SỬA LỖI: rt.id → rt.room_type_id
+    const rows = await db.query(
       `SELECT
          i.invoice_id,
          i.booking_id,
@@ -104,11 +98,11 @@ const getMyInvoices = async (req, res) => {
        FROM Invoices i
        JOIN Bookings   b  ON i.booking_id     = b.booking_id
        JOIN Rooms      r  ON b.room_id        = r.room_id
-       JOIN Room_Types rt ON r.room_type_id   = rt.id
+       JOIN Room_Types rt ON r.room_type_id   = rt.room_type_id
        WHERE b.customer_id = ?
        ORDER BY i.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [customerId, limit, offset]
+       OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`,
+      [parseInt(customerId, 10), offset, limit]
     );
 
     res.json({

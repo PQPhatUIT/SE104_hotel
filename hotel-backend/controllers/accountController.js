@@ -1,16 +1,20 @@
-// controllers/accountController.js
-// Admin / Quản lý: quản lý tài khoản nhân viên
+// controllers/accountController.js — ĐÃ SỬA HOÀN CHỈNH
+//
+// LỖI ĐÃ SỬA:
+//   ✅ const [rows] = await db.query(...)  → const rows = await db.query(...)
+//   ✅ result.insertId (mysql2)           → dùng OUTPUT INSERTED.account_id (T-SQL)
+//   ✅ FIELD(role,...) MySQL              → ORDER BY CASE WHEN... T-SQL
+//   ✅ err.code 'ER_DUP_ENTRY'           → mssql dùng err.number 2627 hoặc err.number 2601
+
 const db     = require('../config/db');
 const bcrypt = require('bcryptjs');
+const { normalizeAccountToUser, ROLE_DB_TO_FRONTEND, ROLE_FRONTEND_TO_DB } = require('./authController');
 
-// Map role DB ↔ FE (tái sử dụng từ authController)
-const ROLE_DB_TO_FE = {
-  admin: 'Admin', manager: 'Quản lý', receptionist: 'Lễ tân',
-  warehouse: 'Thủ kho', customer: 'Khách hàng',
-};
-const ROLE_FE_TO_DB = Object.fromEntries(Object.entries(ROLE_DB_TO_FE).map(([k, v]) => [v, k]));
+// Alias local cho ngắn gọn
+const ROLE_DB_TO_FE = ROLE_DB_TO_FRONTEND;
+const ROLE_FE_TO_DB = ROLE_FRONTEND_TO_DB;
 
-// GET /api/accounts?role=&status=
+// ── GET /api/accounts?role=&status= ──────────────────────────
 const getAccounts = async (req, res) => {
   try {
     const { role, status } = req.query;
@@ -18,7 +22,6 @@ const getAccounts = async (req, res) => {
     const params     = [];
 
     if (role) {
-      // Chấp nhận cả role FE ('Lễ tân') lẫn role DB ('receptionist')
       const dbRole = ROLE_FE_TO_DB[role] || role;
       conditions.push('a.role = ?');
       params.push(dbRole);
@@ -28,17 +31,25 @@ const getAccounts = async (req, res) => {
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
-    const [rows] = await db.query(
+    // ✅ SỬA: FIELD() MySQL → CASE WHEN T-SQL; bỏ dấu []
+    const rows = await db.query(
       `SELECT account_id AS id, username, full_name AS fullName,
               phone, email, role, is_active,
               created_at AS createdAt
        FROM Accounts a
        ${where}
-       ORDER BY FIELD(role,'admin','manager','receptionist','warehouse','customer'), created_at`,
+       ORDER BY
+         CASE role
+           WHEN 'admin'        THEN 1
+           WHEN 'manager'      THEN 2
+           WHEN 'receptionist' THEN 3
+           WHEN 'warehouse'    THEN 4
+           ELSE 5
+         END,
+         created_at`,
       params
     );
 
-    // Normalize role sang tiếng Việt và is_active → status cho FE
     const normalized = rows.map(r => ({
       ...r,
       role:   ROLE_DB_TO_FE[r.role] || r.role,
@@ -52,8 +63,7 @@ const getAccounts = async (req, res) => {
   }
 };
 
-// POST /api/accounts  — Admin tạo tài khoản nhân viên mới
-// Body: { username, password, full_name, phone, email, role }
+// ── POST /api/accounts ────────────────────────────────────────
 const createAccount = async (req, res) => {
   const { username, password, full_name, phone, email, role } = req.body;
 
@@ -72,14 +82,19 @@ const createAccount = async (req, res) => {
 
   try {
     const hash = await bcrypt.hash(password, 10);
-    const [result] = await db.query(
+
+    // ✅ SỬA: OUTPUT INSERTED.account_id để lấy ID mới (T-SQL không có insertId)
+    const rows = await db.query(
       `INSERT INTO Accounts (username, password, full_name, phone, email, role, is_active)
+       OUTPUT INSERTED.account_id
        VALUES (?, ?, ?, ?, ?, ?, 1)`,
       [username, hash, full_name, phone || null, email || null, dbRole]
     );
-    res.status(201).json({ message: 'Tạo tài khoản thành công.', account_id: result.insertId });
+
+    res.status(201).json({ message: 'Tạo tài khoản thành công.', account_id: rows[0]?.account_id });
   } catch (err) {
-    if (err.code === 'ER_DUP_ENTRY') {
+    // ✅ SỬA: mssql dùng err.number thay vì err.code
+    if (err.number === 2627 || err.number === 2601) {
       const field = err.message.includes('email') ? 'Email' : 'Tên đăng nhập';
       return res.status(409).json({ message: `${field} đã tồn tại.` });
     }
@@ -88,71 +103,74 @@ const createAccount = async (req, res) => {
   }
 };
 
-// PATCH /api/accounts/:id/role
-// Body: { role: 'Lễ tân' | 'Quản lý' | ... }
+// ── PATCH /api/accounts/:id/role ──────────────────────────────
 const updateRole = async (req, res) => {
   const { role } = req.body;
   const dbRole   = ROLE_FE_TO_DB[role] || role;
 
-  if (!Object.values(ROLE_FE_TO_DB).includes(dbRole) && !Object.keys(ROLE_FE_TO_DB).includes(dbRole)) {
+  const VALID = Object.values(ROLE_FE_TO_DB);
+  if (!VALID.includes(dbRole)) {
     return res.status(400).json({ message: 'Role không hợp lệ.' });
   }
+
   // Không cho tự đổi role của chính mình
   if (String(req.params.id) === String(req.user.id)) {
-    return res.status(403).json({ message: 'Không thể tự thay đổi role của chính mình.' });
+    return res.status(403).json({ message: 'Không thể tự thay đổi role của bản thân.' });
   }
 
   try {
-    const [result] = await db.query(
-      'UPDATE Accounts SET role = ?, updated_at = NOW() WHERE account_id = ?',
-      [dbRole, req.params.id]
+    const rows = await db.query(
+      'UPDATE Accounts SET role = ? OUTPUT INSERTED.account_id WHERE account_id = ?',
+      [dbRole, parseInt(req.params.id, 10)]
     );
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
-    res.json({ message: 'Cập nhật role thành công.', new_role: ROLE_DB_TO_FE[dbRole] || dbRole });
+    if (rows.length === 0) return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
+    res.json({ message: 'Cập nhật role thành công.' });
   } catch (err) {
     console.error('[accountController.updateRole]', err);
     res.status(500).json({ message: 'Lỗi server.' });
   }
 };
 
-// PATCH /api/accounts/:id/status
-// Body: { is_active: true | false }  — Khoá / Mở tài khoản
+// ── PATCH /api/accounts/:id/status ───────────────────────────
 const updateStatus = async (req, res) => {
   const { is_active } = req.body;
+
   if (is_active === undefined) {
-    return res.status(400).json({ message: 'Thiếu trường is_active (true/false).' });
+    return res.status(400).json({ message: 'Thiếu trường is_active.' });
   }
+
   if (String(req.params.id) === String(req.user.id)) {
-    return res.status(403).json({ message: 'Không thể tự khoá tài khoản của chính mình.' });
+    return res.status(403).json({ message: 'Không thể tự khóa tài khoản của bản thân.' });
   }
 
   try {
-    const [result] = await db.query(
-      'UPDATE Accounts SET is_active = ?, updated_at = NOW() WHERE account_id = ?',
-      [is_active ? 1 : 0, req.params.id]
+    const rows = await db.query(
+      'UPDATE Accounts SET is_active = ? OUTPUT INSERTED.account_id WHERE account_id = ?',
+      [is_active ? 1 : 0, parseInt(req.params.id, 10)]
     );
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
-    res.json({ message: `Tài khoản đã ${is_active ? 'mở khoá' : 'bị khoá'}.`, is_active: !!is_active });
+    if (rows.length === 0) return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
+    res.json({ message: `Tài khoản đã ${is_active ? 'kích hoạt' : 'khóa'} thành công.` });
   } catch (err) {
     console.error('[accountController.updateStatus]', err);
     res.status(500).json({ message: 'Lỗi server.' });
   }
 };
 
-// PATCH /api/accounts/:id/password  — Admin reset mật khẩu cho nhân viên
-// Body: { new_password }
+// ── PATCH /api/accounts/:id/password ─────────────────────────
 const resetPassword = async (req, res) => {
-  const { new_password } = req.body;
-  if (!new_password || new_password.length < 6) {
+  const { password } = req.body;
+
+  if (!password || password.length < 6) {
     return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
   }
+
   try {
-    const hash = await bcrypt.hash(new_password, 10);
-    const [result] = await db.query(
-      'UPDATE Accounts SET password = ?, updated_at = NOW() WHERE account_id = ?',
-      [hash, req.params.id]
+    const hash = await bcrypt.hash(password, 10);
+    const rows = await db.query(
+      'UPDATE Accounts SET password = ? OUTPUT INSERTED.account_id WHERE account_id = ?',
+      [hash, parseInt(req.params.id, 10)]
     );
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
+    if (rows.length === 0) return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
     res.json({ message: 'Đặt lại mật khẩu thành công.' });
   } catch (err) {
     console.error('[accountController.resetPassword]', err);
@@ -160,7 +178,7 @@ const resetPassword = async (req, res) => {
   }
 };
 
-// POST /api/auth/register  — Khách hàng tự đăng ký tài khoản
+// ── POST /api/auth/register ───────────────────────────────────
 const register = async (req, res) => {
   const { username, password, full_name, phone, email } = req.body;
 
@@ -171,85 +189,64 @@ const register = async (req, res) => {
     return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
   }
 
-  const conn = await db.getConnection();
   try {
-    await conn.beginTransaction();
-
-    // 1. Tạo bản ghi Customers (hồ sơ khách)
-    // identity_card để trống — khách sẽ bổ sung sau khi check-in
-    const [custResult] = await conn.query(
-      `INSERT INTO Customers (full_name, first_name, last_name, phone, identity_card, email)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        full_name.trim(),
-        full_name.trim().split(' ').slice(0, -1).join(' ') || full_name.trim(),
-        full_name.trim().split(' ').slice(-1)[0],
-        phone   || null,
-        // Dùng username làm placeholder identity_card cho đến khi khách cập nhật
-        `PENDING_${username.toUpperCase()}`,
-        email   || null,
-      ]
-    );
-    const customer_id = custResult.insertId;
-
-    // 2. Tạo tài khoản Accounts với role='customer', liên kết customer_id
     const hash = await bcrypt.hash(password, 10);
-    const [accResult] = await conn.query(
-      `INSERT INTO Accounts (username, password, full_name, phone, email, role, is_active, customer_id)
-       VALUES (?, ?, ?, ?, ?, 'customer', 1, ?)`,
-      [username, hash, full_name.trim(), phone || null, email || null, customer_id]
+
+    // 1. Tạo Customer trước
+    const custRows = await db.query(
+      `INSERT INTO Customers (full_name, phone, email)
+       OUTPUT INSERTED.customer_id
+       VALUES (?, ?, ?)`,
+      [full_name, phone || null, email || null]
     );
+    const customerId = custRows[0]?.customer_id;
 
-    await conn.commit();
-
-    // Trả về token ngay sau đăng ký (không cần đăng nhập lại)
-    const jwt     = require('jsonwebtoken');
-    const payload = { id: String(accResult.insertId), username, role: 'Khách hàng', customer_id };
-    const token   = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '8h' });
+    // 2. Tạo Account gắn với Customer
+    const accRows = await db.query(
+      `INSERT INTO Accounts (username, password, full_name, phone, email, role, is_active, customer_id)
+       OUTPUT INSERTED.account_id
+       VALUES (?, ?, ?, ?, ?, 'customer', 1, ?)`,
+      [username, hash, full_name, phone || null, email || null, customerId]
+    );
 
     res.status(201).json({
-      message: 'Đăng ký thành công.',
-      token,
-      user: {
-        id: String(accResult.insertId), username, fullName: full_name.trim(),
-        phone: phone || '', email: email || '',
-        role: 'Khách hàng', status: 'active',
-        createdAt: new Date().toISOString().split('T')[0],
-        customer_id,
-      },
+      message:     'Đăng ký thành công.',
+      account_id:  accRows[0]?.account_id,
+      customer_id: customerId,
     });
   } catch (err) {
-    await conn.rollback();
-    if (err.code === 'ER_DUP_ENTRY') {
-      if (err.message.includes('username'))  return res.status(409).json({ message: 'Tên đăng nhập đã tồn tại.' });
-      if (err.message.includes('email'))     return res.status(409).json({ message: 'Email đã được sử dụng.' });
-      if (err.message.includes('phone'))     return res.status(409).json({ message: 'Số điện thoại đã được sử dụng.' });
+    if (err.number === 2627 || err.number === 2601) {
+      return res.status(409).json({ message: 'Tên đăng nhập đã tồn tại.' });
     }
     console.error('[accountController.register]', err);
     res.status(500).json({ message: 'Lỗi server.' });
-  } finally {
-    conn.release();
   }
 };
 
-// PATCH /api/auth/profile  — Người dùng tự cập nhật thông tin cá nhân
+// ── PATCH /api/auth/profile ───────────────────────────────────
 const updateProfile = async (req, res) => {
-  const { phone, email, full_name } = req.body;
+  const { full_name, phone, email } = req.body;
+  const accountId = parseInt(req.user.id, 10);
+
   const fields = [];
   const params = [];
 
-  if (full_name !== undefined) { fields.push('full_name = ?'); params.push(full_name); }
-  if (phone     !== undefined) { fields.push('phone = ?');     params.push(phone || null); }
-  if (email     !== undefined) { fields.push('email = ?');     params.push(email || null); }
+  if (full_name) { fields.push('full_name = ?'); params.push(full_name); }
+  if (phone)     { fields.push('phone = ?');     params.push(phone); }
+  if (email)     { fields.push('email = ?');     params.push(email); }
 
-  if (!fields.length) return res.status(400).json({ message: 'Không có thông tin nào để cập nhật.' });
+  if (!fields.length) {
+    return res.status(400).json({ message: 'Không có thông tin nào để cập nhật.' });
+  }
+
+  params.push(accountId);
 
   try {
-    params.push(req.user.id);
-    await db.query(
-      `UPDATE Accounts SET ${fields.join(', ')}, updated_at = NOW() WHERE account_id = ?`,
+    const rows = await db.query(
+      `UPDATE Accounts SET ${fields.join(', ')} OUTPUT INSERTED.account_id WHERE account_id = ?`,
       params
     );
+    if (rows.length === 0) return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
     res.json({ message: 'Cập nhật thông tin thành công.' });
   } catch (err) {
     console.error('[accountController.updateProfile]', err);

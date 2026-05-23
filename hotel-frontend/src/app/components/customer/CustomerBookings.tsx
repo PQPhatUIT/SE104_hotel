@@ -1,16 +1,14 @@
 // src/app/components/customer/CustomerBookings.tsx
-// SỬA LỖI:
-//   1. Dùng useBookings() thay vì truy cập mock array trực tiếp
-//   2. Optional chaining (?.) trên toàn bộ thuộc tính booking để tránh crash khi undefined
-//   3. Thêm loading skeleton và empty state
+// FIX: Thêm named export { CustomerBookings } để App.tsx import được
+//      (App.tsx dùng named import, file cũ chỉ có export default → undefined → trang trắng)
 
 import { useBookings } from '../../context/BookingContext';
 
 const STATUS_STYLE: Record<string, string> = {
-  'Đã đặt':       'bg-blue-100 text-blue-800',
-  'Đã nhận phòng':'bg-green-100 text-green-800',
-  'Hoàn thành':   'bg-gray-100 text-gray-700',
-  'Đã hủy':       'bg-red-100 text-red-700',
+  'Đã đặt':        'bg-blue-100 text-blue-800',
+  'Đã nhận phòng': 'bg-green-100 text-green-800',
+  'Hoàn thành':    'bg-gray-100 text-gray-700',
+  'Đã hủy':        'bg-red-100 text-red-700',
 };
 
 function formatCurrency(amount: number | undefined): string {
@@ -25,7 +23,8 @@ function formatDate(dateStr: string | undefined): string {
   return d.toLocaleDateString('vi-VN');
 }
 
-export default function CustomerBookings() {
+// ✅ FIX BUG #1: Vừa export named VỪA export default để tương thích mọi kiểu import
+export function CustomerBookings() {
   const { bookings, isLoading } = useBookings();
 
   if (isLoading) {
@@ -57,7 +56,6 @@ export default function CustomerBookings() {
 
       <div className="space-y-4">
         {bookings.map((booking) => {
-          // Optional chaining toàn bộ — layout không vỡ dù booking thiếu trường
           const statusStyle = STATUS_STYLE[booking?.status ?? ''] ?? 'bg-gray-100 text-gray-600';
 
           return (
@@ -128,3 +126,6 @@ export default function CustomerBookings() {
     </div>
   );
 }
+
+// Giữ default export để không break bất kỳ file nào import theo cách cũ
+export default CustomerBookings;

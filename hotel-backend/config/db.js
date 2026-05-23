@@ -1,27 +1,21 @@
-// config/db.js
-// ✅ Kết nối SQL Server bằng Windows Authentication (không cần user/password)
-
-const sql = require('mssql');
+﻿const sql = require('mssql');
 require('dotenv').config();
 
 const config = {
-  server:   process.env.DB_HOST || 'localhost\\SQLEXPRESS',
-  database: process.env.DB_NAME || 'hotel_management',
+  server:   process.env.DB_SERVER   || 'IDZYUZEN',
+  database: process.env.DB_DATABASE || 'hotel_management',
   port:     parseInt(process.env.DB_PORT || '1433', 10),
-
+  domain:   process.env.DB_DOMAIN   || '',
+  user:     process.env.DB_USER     || '',
+  password: process.env.DB_PASSWORD || '',
   options: {
-    trustedConnection:      true,   // ✅ Windows Authentication
-    trustServerCertificate: true,   // bỏ qua lỗi SSL self-signed
+    trustedConnection:      true,
+    trustServerCertificate: true,
     enableArithAbort:       true,
     encrypt:                false,
+    instanceName:           process.env.DB_INSTANCE || '',
   },
-
-  pool: {
-    max:               10,
-    min:               0,
-    idleTimeoutMillis: 30000,
-  },
-
+  pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
   connectionTimeout: 15000,
   requestTimeout:    30000,
 };
@@ -32,81 +26,57 @@ async function getPool() {
   if (pool) return pool;
   try {
     pool = await sql.connect(config);
-    console.log('✅ Kết nối SQL Server (Windows Auth) thành công!');
+    console.log('Ket noi SQL Server thanh cong! (Windows Auth)');
     return pool;
   } catch (err) {
-    console.error('❌ Lỗi kết nối SQL Server:', err.message);
+    console.error('Loi ket noi SQL Server:', err.message);
+    pool = null;
     throw err;
   }
 }
 
-// Wrapper db.query(sql, [params]) — tương thích toàn bộ controller
+function bindParams(request, sqlText, params = []) {
+  let i = 0;
+  return sqlText.replace(/\?/g, () => {
+    const name = 'p' + i;
+    const val  = params[i++];
+    if (val === null || val === undefined) request.input(name, sql.NVarChar, null);
+    else if (typeof val === 'boolean')    request.input(name, sql.Bit, val ? 1 : 0);
+    else if (Number.isInteger(val))       request.input(name, sql.Int, val);
+    else if (typeof val === 'number')     request.input(name, sql.Decimal(15,2), val);
+    else if (val instanceof Date)         request.input(name, sql.DateTime2, val);
+    else                                  request.input(name, sql.NVarChar(sql.MAX), String(val));
+    return '@' + name;
+  });
+}
+
 async function query(sqlText, params = []) {
   const p = await getPool();
-  const request = p.request();
-
-  let paramIndex = 0;
-  const convertedSql = sqlText.replace(/\?/g, () => {
-    const name  = `p${paramIndex}`;
-    const value = params[paramIndex];
-
-    if (value === null || value === undefined) {
-      request.input(name, sql.NVarChar, null);
-    } else if (typeof value === 'number' && Number.isInteger(value)) {
-      request.input(name, sql.Int, value);
-    } else if (typeof value === 'number') {
-      request.input(name, sql.Decimal(15, 2), value);
-    } else if (value instanceof Date) {
-      request.input(name, sql.DateTime2, value);
-    } else {
-      request.input(name, sql.NVarChar(sql.MAX), String(value));
-    }
-
-    paramIndex++;
-    return `@${name}`;
-  });
-
-  const result = await request.query(convertedSql);
+  const req = p.request();
+  const converted = bindParams(req, sqlText, params);
+  const result = await req.query(converted);
   return result.recordset;
 }
 
-// Transaction wrapper
 async function beginTransaction() {
   const p = await getPool();
-  const transaction = new sql.Transaction(p);
-  await transaction.begin();
-
+  const t = new sql.Transaction(p);
+  await t.begin();
   return {
     query: async (sqlText, params = []) => {
-      const request = new sql.Request(transaction);
-      let paramIndex = 0;
-      const convertedSql = sqlText.replace(/\?/g, () => {
-        const name  = `p${paramIndex}`;
-        const value = params[paramIndex];
-
-        if (value === null || value === undefined) {
-          request.input(name, sql.NVarChar, null);
-        } else if (typeof value === 'number' && Number.isInteger(value)) {
-          request.input(name, sql.Int, value);
-        } else if (typeof value === 'number') {
-          request.input(name, sql.Decimal(15, 2), value);
-        } else if (value instanceof Date) {
-          request.input(name, sql.DateTime2, value);
-        } else {
-          request.input(name, sql.NVarChar(sql.MAX), String(value));
-        }
-        paramIndex++;
-        return `@${name}`;
-      });
-
-      const result = await request.query(convertedSql);
+      const req = new sql.Request(t);
+      const converted = bindParams(req, sqlText, params);
+      const result = await req.query(converted);
       return result.recordset;
     },
-    commit:   () => transaction.commit(),
-    rollback: () => transaction.rollback(),
+    commit:   () => t.commit(),
+    rollback: () => t.rollback(),
   };
 }
 
-getPool().catch(() => process.exit(1));
+getPool().catch((err) => {
+  console.error('Khong the ket noi database:', err.message);
+  process.exit(1);
+});
 
-module.exports = { query, beginTransaction, sql };
+module.exports = { query, beginTransaction, getPool, sql };
