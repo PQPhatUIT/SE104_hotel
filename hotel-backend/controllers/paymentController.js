@@ -1,21 +1,15 @@
 // controllers/paymentController.js
-// Tính năng 1: Xử lý thanh toán hóa đơn — tự động tính tiền từ Booking, cập nhật trạng thái DB
+// ✅ Chuyển từ mysql2 → mssql
+// Thay đổi chính:
+//   1. db.getConnection() + conn.beginTransaction() → db.beginTransaction()
+//   2. const [rows] = ... → const rows = ...
+//   3. invoiceResult.insertId → dùng OUTPUT INSERTED.invoice_id trong T-SQL
+//   4. NOW() → GETDATE()
+//   5. Tên cột khớp với schema SQL đã tạo (deposit_amount, not deposit)
 
 const db = require('../config/db');
 
-/**
- * POST /api/payments
- * Body: { booking_id, extra_charges? }
- * Yêu cầu: verifyToken (req.user phải có id và role)
- *
- * Luồng xử lý:
- * 1. Lấy thông tin Booking (check_in, check_out, room_price, deposit, trạng thái)
- * 2. Tự động tính: total = số_đêm * giá_phòng + extra_charges - deposit
- * 3. INSERT vào bảng Invoices
- * 4. UPDATE Bookings.status = 'checked_out'
- * 5. UPDATE Rooms.status = 'available'
- * Tất cả trong 1 transaction để đảm bảo toàn vẹn dữ liệu
- */
+// ── POST /api/payments ────────────────────────────────────────────────────
 const processPayment = async (req, res) => {
   const { booking_id, extra_charges = 0 } = req.body;
 
@@ -23,154 +17,145 @@ const processPayment = async (req, res) => {
     return res.status(400).json({ message: 'Vui lòng cung cấp booking_id.' });
   }
 
-  // Lấy connection riêng để dùng transaction
-  const conn = await db.getConnection();
+  // ✅ mssql: dùng beginTransaction() wrapper thay vì getConnection()
+  const t = await db.beginTransaction();
 
   try {
-    await conn.beginTransaction();
-
-    // --- Bước 1: Lấy thông tin booking ---
-    const [bookings] = await conn.query(
-      `SELECT 
+    // Bước 1: Lấy thông tin booking
+    const bookings = await t.query(
+      `SELECT
          b.booking_id,
          b.room_id,
          b.customer_id,
          b.check_in_date,
          b.check_out_date,
-         b.deposit,
-         b.status        AS booking_status,
-         r.price_per_night,
+         b.deposit_amount,      -- ✅ đúng tên cột trong schema
+         b.status               AS booking_status,
+         rt.base_price          AS price_per_night,  -- ✅ lấy từ Room_Types
          r.room_number
        FROM Bookings b
-       JOIN Rooms r ON b.room_id = r.room_id
+       JOIN Rooms      r  ON b.room_id      = r.room_id
+       JOIN Room_Types rt ON r.room_type_id = rt.room_type_id
        WHERE b.booking_id = ?`,
-      [booking_id]
+      [parseInt(booking_id, 10)]
     );
 
-    if (bookings.length === 0) {
-      await conn.rollback();
+    if (!bookings || bookings.length === 0) {
+      await t.rollback();
       return res.status(404).json({ message: `Không tìm thấy booking với ID: ${booking_id}` });
     }
 
     const booking = bookings[0];
 
-    // Chỉ cho phép thanh toán nếu booking đang ở trạng thái 'confirmed' hoặc 'checked_in'
     if (!['confirmed', 'checked_in'].includes(booking.booking_status)) {
-      await conn.rollback();
+      await t.rollback();
       return res.status(400).json({
-        message: `Không thể thanh toán. Trạng thái hiện tại của booking là: "${booking.booking_status}".`
+        message: `Không thể thanh toán. Trạng thái hiện tại: "${booking.booking_status}".`
       });
     }
 
-    // --- Bước 2: Tính số đêm và tổng tiền ---
+    // Bước 2: Tính tiền
     const checkIn  = new Date(booking.check_in_date);
     const checkOut = new Date(booking.check_out_date);
-
-    // Tính số đêm: làm tròn lên để tránh thiếu (trường hợp check-out muộn)
-    const msPerDay   = 1000 * 60 * 60 * 24;
-    const nights     = Math.ceil((checkOut - checkIn) / msPerDay);
+    const nights   = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
 
     if (nights <= 0) {
-      await conn.rollback();
+      await t.rollback();
       return res.status(400).json({ message: 'Ngày check-out phải sau ngày check-in.' });
     }
 
-    const roomCharge    = nights * parseFloat(booking.price_per_night);
-    const extraCharges  = parseFloat(extra_charges) || 0;
-    const deposit       = parseFloat(booking.deposit) || 0;
-    const totalAmount   = roomCharge + extraCharges - deposit;
+    const roomCharge   = nights * parseFloat(booking.price_per_night);
+    const extraCharges = parseFloat(extra_charges) || 0;
+    const deposit      = parseFloat(booking.deposit_amount) || 0;
+    const totalAmount  = Math.max(roomCharge + extraCharges - deposit, 0);
 
-    // Tổng tiền không được âm (trường hợp cọc nhiều hơn thực tế)
-    const finalAmount = Math.max(totalAmount, 0);
-
-    // --- Bước 3: Tạo hóa đơn trong bảng Invoices ---
-    const [invoiceResult] = await conn.query(
-      `INSERT INTO Invoices 
-         (booking_id, customer_id, room_charge, extra_charges, deposit, total_amount, payment_status, payment_date, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, 'paid', NOW(), ?)`,
+    // Bước 3: Insert Invoice — dùng OUTPUT INSERTED để lấy ID mới
+    // ✅ T-SQL: không có INSERT ... RETURNING, phải dùng OUTPUT INSERTED.col
+    const invoiceRows = await t.query(
+      `INSERT INTO Invoices
+         (booking_id, payment_method, room_charge, service_charge,
+          total_amount, amount_paid, change_amount)
+       OUTPUT INSERTED.invoice_id
+       VALUES (?, 'cash', ?, ?, ?, ?, ?)`,
       [
-        booking.booking_id,
-        booking.customer_id,
+        parseInt(booking_id, 10),
         roomCharge,
         extraCharges,
-        deposit,
-        finalAmount,
-        req.user.id, // ID nhân viên thực hiện thanh toán (từ JWT)
+        totalAmount,
+        totalAmount,   // amount_paid = total (thanh toán đủ)
+        0,             // change_amount
       ]
     );
 
-    const newInvoiceId = invoiceResult.insertId;
+    const newInvoiceId = invoiceRows?.[0]?.invoice_id;
 
-    // --- Bước 4: Cập nhật trạng thái Booking → 'checked_out' ---
-    await conn.query(
-      `UPDATE Bookings SET status = 'checked_out', updated_at = NOW() WHERE booking_id = ?`,
-      [booking.booking_id]
+    // Bước 4: Cập nhật Booking → checked_out
+    await t.query(
+      `UPDATE Bookings
+       SET status = 'checked_out', updated_at = GETDATE()
+       WHERE booking_id = ?`,
+      [parseInt(booking_id, 10)]
     );
 
-    // --- Bước 5: Cập nhật trạng thái Phòng → 'available' ---
-    await conn.query(
-      `UPDATE Rooms SET status = 'available', updated_at = NOW() WHERE room_id = ?`,
-      [booking.room_id]
+    // Bước 5: Cập nhật Phòng → available
+    await t.query(
+      `UPDATE Rooms
+       SET status = 'available', updated_at = GETDATE()
+       WHERE room_id = ?`,
+      [parseInt(booking.room_id, 10)]
     );
 
-    // Tất cả thành công → commit transaction
-    await conn.commit();
+    await t.commit();
 
     res.status(201).json({
       message: 'Thanh toán thành công!',
       invoice: {
-        invoice_id:     newInvoiceId,
-        booking_id:     booking.booking_id,
-        room_number:    booking.room_number,
-        check_in_date:  booking.check_in_date,
-        check_out_date: booking.check_out_date,
+        invoice_id:      newInvoiceId,
+        booking_id:      booking.booking_id,
+        room_number:     booking.room_number,
+        check_in_date:   booking.check_in_date,
+        check_out_date:  booking.check_out_date,
         nights,
         price_per_night: booking.price_per_night,
-        room_charge:    roomCharge,
-        extra_charges:  extraCharges,
+        room_charge:     roomCharge,
+        extra_charges:   extraCharges,
         deposit,
-        total_amount:   finalAmount,
-        payment_status: 'paid',
-        payment_date:   new Date().toISOString(),
+        total_amount:    totalAmount,
+        payment_status:  'paid',
+        payment_date:    new Date().toISOString(),
       }
     });
 
   } catch (err) {
-    await conn.rollback(); // Hoàn tác toàn bộ nếu có bất kỳ lỗi nào
+    await t.rollback();
     console.error('[paymentController.processPayment]', err);
     res.status(500).json({ message: 'Lỗi server khi xử lý thanh toán.' });
-  } finally {
-    conn.release(); // Luôn trả connection về pool dù thành công hay thất bại
   }
 };
 
-
-/**
- * GET /api/payments/:booking_id
- * Xem chi tiết hóa đơn theo booking_id
- * Yêu cầu: verifyToken
- */
+// ── GET /api/payments/:booking_id ─────────────────────────────────────────
 const getInvoiceByBookingId = async (req, res) => {
   const { booking_id } = req.params;
 
   try {
-    const [rows] = await db.query(
-      `SELECT 
+    const rows = await db.query(
+      `SELECT
          i.*,
          b.check_in_date,
          b.check_out_date,
          r.room_number,
-         r.room_type,
-         CONCAT(c.first_name, ' ', c.last_name) AS customer_name
+         rt.type_name       AS room_type,
+         c.full_name        AS customer_name
        FROM Invoices i
-       JOIN Bookings b ON i.booking_id = b.booking_id
-       JOIN Rooms r    ON b.room_id    = r.room_id
-       JOIN Customers c ON i.customer_id = c.customer_id
+       JOIN Bookings   b  ON i.booking_id   = b.booking_id
+       JOIN Rooms      r  ON b.room_id      = r.room_id
+       JOIN Room_Types rt ON r.room_type_id = rt.room_type_id
+       JOIN Customers  c  ON b.customer_id  = c.customer_id
        WHERE i.booking_id = ?`,
-      [booking_id]
+      [parseInt(booking_id, 10)]
     );
 
-    if (rows.length === 0) {
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ message: 'Không tìm thấy hóa đơn cho booking này.' });
     }
 
