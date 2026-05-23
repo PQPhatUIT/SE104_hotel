@@ -4,8 +4,8 @@
 //   ✅ const [rows] = ...   → const rows = ...
 //   ✅ result.affectedRows  → dùng OUTPUT INSERTED / kiểm tra rows.length
 //   ✅ rt.id               → rt.room_type_id
-//   ✅ NOW()               → GETDATE()
-//   ✅ result.insertId     → OUTPUT INSERTED.room_id
+//   ✅ NOW()               → NOW()
+//   ✅ result.insertId     → 
 //   ✅ err.code ER_DUP_ENTRY → err.number 2627
 
 const db = require('../config/db');
@@ -100,8 +100,8 @@ const updateRoomStatus = async (req, res) => {
   try {
     // ✅ OUTPUT INSERTED thay vì kiểm tra affectedRows
     const rows = await db.query(
-      `UPDATE Rooms SET status = ?, updated_at = GETDATE()
-       OUTPUT INSERTED.room_id
+      `UPDATE Rooms SET status = ?, updated_at = NOW()
+       
        WHERE room_id = ?`,
       [status, parseInt(req.params.id, 10)]
     );
@@ -126,13 +126,13 @@ const createRoom = async (req, res) => {
   try {
     const rows = await db.query(
       `INSERT INTO Rooms (room_number, room_type_id)
-       OUTPUT INSERTED.room_id
+       
        VALUES (?, ?)`,
       [room_number, parseInt(room_type_id, 10)]
     );
-    res.status(201).json({ message: 'Tạo phòng thành công.', room_id: rows[0]?.room_id });
+    res.status(201).json({ message: 'Tạo phòng thành công.', room_id: rows.insertId });
   } catch (err) {
-    if (err.number === 2627 || err.number === 2601) {
+    if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: `Số phòng "${room_number}" đã tồn tại.` });
     }
     console.error('[roomController.createRoom]', err);

@@ -4,7 +4,7 @@
 //   ✅ const [rows] = await db.query(...)      → const rows = await db.query(...)
 //   ✅ const [[{ total }]] = await db.query(...)  → const countRows = await db.query(...) / total = countRows[0].total
 //   ✅ DATEDIFF(check_out, check_in) MySQL    → DATEDIFF(DAY, check_in, check_out) T-SQL
-//   ✅ LIMIT ? OFFSET ? MySQL                 → OFFSET ? ROWS FETCH NEXT ? ROWS ONLY T-SQL
+//   ✅ LIMIT ? OFFSET ? MySQL                 → LIMIT ? OFFSET ? T-SQL
 //   ✅ rt.id MySQL alias                      → rt.room_type_id (đúng tên cột schema)
 
 const db = require('../config/db');
@@ -101,7 +101,7 @@ const getMyInvoices = async (req, res) => {
        JOIN Room_Types rt ON r.room_type_id   = rt.room_type_id
        WHERE b.customer_id = ?
        ORDER BY i.created_at DESC
-       OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`,
+       LIMIT ? OFFSET ?`,
       [parseInt(customerId, 10), offset, limit]
     );
 

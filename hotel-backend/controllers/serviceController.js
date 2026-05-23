@@ -15,7 +15,7 @@ const getServices = async (req, res) => {
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
-    const [rows] = await db.query(
+    const rows = await db.query(
       `SELECT service_id, service_name, unit, price,
               stock_quantity, min_limit,
               -- Flag cảnh báo để FE hiển thị badge
@@ -35,7 +35,7 @@ const getServices = async (req, res) => {
 // GET /api/services/:id
 const getServiceById = async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM Services WHERE service_id = ?', [req.params.id]);
+    const rows = await db.query('SELECT * FROM Services WHERE service_id = ?', [req.params.id]);
     if (!rows.length) return res.status(404).json({ message: 'Không tìm thấy dịch vụ.' });
     res.json(rows[0]);
   } catch (err) {
@@ -121,7 +121,7 @@ const addStock = async (req, res) => {
     );
     if (result.affectedRows === 0) return res.status(404).json({ message: 'Không tìm thấy dịch vụ.' });
 
-    const [[svc]] = await db.query('SELECT stock_quantity FROM Services WHERE service_id = ?', [req.params.id]);
+    const _svcRows = await db.query('SELECT stock_quantity FROM Services WHERE service_id = ?', [req.params.id]);
     res.json({ message: 'Nhập hàng thành công.', new_stock: svc.stock_quantity });
   } catch (err) {
     console.error('[serviceController.addStock]', err);
