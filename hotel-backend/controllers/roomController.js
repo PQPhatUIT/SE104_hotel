@@ -1,16 +1,14 @@
-// controllers/roomController.js — ĐÃ SỬA HOÀN CHỈNH
+// controllers/roomController.js — ĐÃ SỬA LỖI
 //
 // LỖI ĐÃ SỬA:
-//   ✅ const [rows] = ...   → const rows = ...
-//   ✅ result.affectedRows  → dùng OUTPUT INSERTED / kiểm tra rows.length
-//   ✅ rt.id               → rt.room_type_id
-//   ✅ NOW()               → NOW()
-//   ✅ result.insertId     → 
-//   ✅ err.code ER_DUP_ENTRY → err.number 2627
+//   ✅ updateRoomStatus: dùng rows.length === 0 để check → sửa thành result.affectedRows === 0
+//      (db.query với UPDATE trả về ResultSetHeader, không phải array nên .length không hoạt động)
+//   ✅ createRoom: rows.insertId → result.insertId (đặt đúng tên biến)
+//   ✅ Xóa comment thừa "OUTPUT INSERTED" trong câu SQL (cú pháp T-SQL không dùng trong MySQL)
 
 const db = require('../config/db');
 
-// ── GET /api/rooms ────────────────────────────────────────────
+// GET /api/rooms
 const getRooms = async (req, res) => {
   try {
     const { status } = req.query;
@@ -38,7 +36,7 @@ const getRooms = async (req, res) => {
   }
 };
 
-// ── GET /api/rooms/available ──────────────────────────────────
+// GET /api/rooms/available
 const getAvailableRooms = async (req, res) => {
   const { check_in, check_out } = req.query;
 
@@ -71,7 +69,7 @@ const getAvailableRooms = async (req, res) => {
   }
 };
 
-// ── GET /api/rooms/:id ────────────────────────────────────────
+// GET /api/rooms/:id
 const getRoomById = async (req, res) => {
   try {
     const rows = await db.query(
@@ -88,7 +86,7 @@ const getRoomById = async (req, res) => {
   }
 };
 
-// ── PATCH /api/rooms/:id/status ───────────────────────────────
+// PATCH /api/rooms/:id/status
 const updateRoomStatus = async (req, res) => {
   const { status } = req.body;
   const VALID = ['available', 'occupied', 'maintenance'];
@@ -98,14 +96,12 @@ const updateRoomStatus = async (req, res) => {
   }
 
   try {
-    // ✅ OUTPUT INSERTED thay vì kiểm tra affectedRows
-    const rows = await db.query(
-      `UPDATE Rooms SET status = ?, updated_at = NOW()
-       
-       WHERE room_id = ?`,
+    // ✅ SỬA: UPDATE trả về ResultSetHeader → dùng result.affectedRows, KHÔNG dùng rows.length
+    const result = await db.query(
+      `UPDATE Rooms SET status = ?, updated_at = NOW() WHERE room_id = ?`,
       [status, parseInt(req.params.id, 10)]
     );
-    if (rows.length === 0) {
+    if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Không tìm thấy phòng.' });
     }
     res.json({ message: 'Cập nhật trạng thái phòng thành công.', room_id: req.params.id, status });
@@ -115,7 +111,7 @@ const updateRoomStatus = async (req, res) => {
   }
 };
 
-// ── POST /api/rooms ───────────────────────────────────────────
+// POST /api/rooms
 const createRoom = async (req, res) => {
   const { room_number, room_type_id } = req.body;
 
@@ -124,13 +120,12 @@ const createRoom = async (req, res) => {
   }
 
   try {
-    const rows = await db.query(
-      `INSERT INTO Rooms (room_number, room_type_id)
-       
-       VALUES (?, ?)`,
+    // ✅ SỬA: INSERT trả về ResultSetHeader → dùng result.insertId (không phải rows.insertId)
+    const result = await db.query(
+      `INSERT INTO Rooms (room_number, room_type_id) VALUES (?, ?)`,
       [room_number, parseInt(room_type_id, 10)]
     );
-    res.status(201).json({ message: 'Tạo phòng thành công.', room_id: rows.insertId });
+    res.status(201).json({ message: 'Tạo phòng thành công.', room_id: result.insertId });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: `Số phòng "${room_number}" đã tồn tại.` });
@@ -140,7 +135,7 @@ const createRoom = async (req, res) => {
   }
 };
 
-// ── GET /api/room-types ───────────────────────────────────────
+// GET /api/room-types
 const getRoomTypes = async (_req, res) => {
   try {
     const rows = await db.query('SELECT * FROM Room_Types ORDER BY base_price');

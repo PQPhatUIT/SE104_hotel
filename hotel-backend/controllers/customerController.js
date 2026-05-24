@@ -1,15 +1,13 @@
-// controllers/customerController.js — ĐÃ SỬA HOÀN CHỈNH
+// controllers/customerController.js — ĐÃ SỬA LỖI
 //
 // LỖI ĐÃ SỬA:
-//   ✅ const [rows] = await db.query(...)      → const rows = await db.query(...)
-//   ✅ const [[{ total }]] = await db.query(...)  → const countRows = await db.query(...) / total = countRows[0].total
-//   ✅ DATEDIFF(check_out, check_in) MySQL    → DATEDIFF(DAY, check_in, check_out) T-SQL
-//   ✅ LIMIT ? OFFSET ? MySQL                 → LIMIT ? OFFSET ? T-SQL
-//   ✅ rt.id MySQL alias                      → rt.room_type_id (đúng tên cột schema)
+//   ✅ DATEDIFF(DAY, col1, col2) — cú pháp T-SQL → DATEDIFF(col2, col1) cú pháp MySQL
+//   ✅ LIMIT ? OFFSET ? — thứ tự params [offset, limit] sai → sửa thành [limit, offset]
+//      MySQL: LIMIT {số lượng} OFFSET {bỏ qua} → params phải là [limit, offset]
 
 const db = require('../config/db');
 
-// ── GET /api/customer/my-bookings ────────────────────────────
+// GET /api/customer/my-bookings
 const getMyBookings = async (req, res) => {
   const customerId = req.user?.customer_id;
 
@@ -18,9 +16,6 @@ const getMyBookings = async (req, res) => {
   }
 
   try {
-    // ✅ SỬA LỖI 1: bỏ dấu []
-    // ✅ SỬA LỖI 2: DATEDIFF(DAY, col1, col2) cho T-SQL (MySQL: DATEDIFF(col2, col1))
-    // ✅ SỬA LỖI 3: rt.room_type_id thay vì rt.id
     const rows = await db.query(
       `SELECT
          b.booking_id,
@@ -35,7 +30,7 @@ const getMyBookings = async (req, res) => {
          rt.base_price,
          COALESCE(
            inv.total_amount,
-           DATEDIFF(DAY, b.check_in_date, b.check_out_date) * rt.base_price - b.deposit_amount
+           DATEDIFF(b.check_out_date, b.check_in_date) * rt.base_price - b.deposit_amount
          ) AS total_amount
        FROM Bookings b
        JOIN Rooms      r   ON b.room_id      = r.room_id
@@ -54,7 +49,7 @@ const getMyBookings = async (req, res) => {
   }
 };
 
-// ── GET /api/customer/my-invoices ────────────────────────────
+// GET /api/customer/my-invoices
 const getMyInvoices = async (req, res) => {
   const customerId = req.user?.customer_id;
 
@@ -67,7 +62,6 @@ const getMyInvoices = async (req, res) => {
   const offset = (page - 1) * limit;
 
   try {
-    // ✅ SỬA LỖI: bỏ [[{ total }]], dùng countRows[0].total
     const countRows = await db.query(
       `SELECT COUNT(*) AS total
        FROM Invoices i
@@ -77,8 +71,7 @@ const getMyInvoices = async (req, res) => {
     );
     const total = countRows[0]?.total ?? 0;
 
-    // ✅ SỬA LỖI: LIMIT/OFFSET MySQL → OFFSET...FETCH T-SQL
-    // ✅ SỬA LỖI: rt.id → rt.room_type_id
+    // ✅ SỬA: MySQL LIMIT {limit} OFFSET {offset} → params thứ tự [customerId, limit, offset]
     const rows = await db.query(
       `SELECT
          i.invoice_id,
@@ -96,13 +89,13 @@ const getMyInvoices = async (req, res) => {
          r.room_number,
          rt.type_name       AS room_type
        FROM Invoices i
-       JOIN Bookings   b  ON i.booking_id     = b.booking_id
-       JOIN Rooms      r  ON b.room_id        = r.room_id
-       JOIN Room_Types rt ON r.room_type_id   = rt.room_type_id
+       JOIN Bookings   b  ON i.booking_id   = b.booking_id
+       JOIN Rooms      r  ON b.room_id      = r.room_id
+       JOIN Room_Types rt ON r.room_type_id = rt.room_type_id
        WHERE b.customer_id = ?
        ORDER BY i.created_at DESC
        LIMIT ? OFFSET ?`,
-      [parseInt(customerId, 10), offset, limit]
+      [parseInt(customerId, 10), limit, offset]
     );
 
     res.json({

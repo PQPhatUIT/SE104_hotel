@@ -1,5 +1,10 @@
-// controllers/serviceController.js
-// Thủ kho / Quản lý: quản lý dịch vụ, cập nhật tồn kho, cảnh báo sắp hết
+// controllers/serviceController.js — ĐÃ SỬA LỖI
+//
+// LỖI ĐÃ SỬA:
+//   ✅ const [result] = await db.query(INSERT/UPDATE) → const result = await db.query(...)
+//      db.query() trong db.js đã unwrap [rows] rồi, destructure thêm sẽ lấy sai giá trị
+//   ✅ addStock: biến _svcRows không dùng được → đổi thành svcRows và dùng svcRows[0]
+
 const db = require('../config/db');
 
 // GET /api/services?available=1&low_stock=1
@@ -10,7 +15,6 @@ const getServices = async (req, res) => {
     const params     = [];
 
     if (available === '1') { conditions.push('s.is_available = 1'); }
-    // Lọc các dịch vụ đang gần hết hàng (stock <= min_limit)
     if (low_stock === '1') { conditions.push('s.stock_quantity <= s.min_limit AND s.min_limit > 0'); }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -18,7 +22,6 @@ const getServices = async (req, res) => {
     const rows = await db.query(
       `SELECT service_id, service_name, unit, price,
               stock_quantity, min_limit,
-              -- Flag cảnh báo để FE hiển thị badge
               (stock_quantity <= min_limit AND min_limit > 0) AS is_low_stock,
               description, is_available, updated_at
        FROM Services s ${where}
@@ -45,7 +48,6 @@ const getServiceById = async (req, res) => {
 };
 
 // POST /api/services
-// Body: { service_name, unit, price, stock_quantity?, min_limit?, description? }
 const createService = async (req, res) => {
   const { service_name, unit, price, stock_quantity = 0, min_limit = 0, description } = req.body;
 
@@ -57,7 +59,8 @@ const createService = async (req, res) => {
   }
 
   try {
-    const [result] = await db.query(
+    // ✅ SỬA: bỏ dấu [] — db.query trả về ResultSetHeader trực tiếp với INSERT
+    const result = await db.query(
       `INSERT INTO Services (service_name, unit, price, stock_quantity, min_limit, description)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [service_name, unit, price, stock_quantity, min_limit, description || null]
@@ -73,10 +76,8 @@ const createService = async (req, res) => {
 };
 
 // PATCH /api/services/:id
-// Cập nhật thông tin hoặc số lượng tồn kho
 const updateService = async (req, res) => {
   const { service_name, unit, price, stock_quantity, min_limit, description, is_available } = req.body;
-
   const fields = [];
   const params = [];
 
@@ -92,7 +93,8 @@ const updateService = async (req, res) => {
 
   try {
     params.push(req.params.id);
-    const [result] = await db.query(
+    // ✅ SỬA: bỏ dấu []
+    const result = await db.query(
       `UPDATE Services SET ${fields.join(', ')}, updated_at = NOW() WHERE service_id = ?`,
       params
     );
@@ -105,24 +107,22 @@ const updateService = async (req, res) => {
 };
 
 // PATCH /api/services/:id/stock
-// Cộng thêm số lượng tồn kho (nhập hàng) — tránh ghi đè nhầm
-// Body: { quantity_added: 50 }
 const addStock = async (req, res) => {
   const { quantity_added } = req.body;
   if (!quantity_added || Number(quantity_added) <= 0) {
     return res.status(400).json({ message: 'quantity_added phải là số dương.' });
   }
   try {
-    const [result] = await db.query(
-      `UPDATE Services
-       SET stock_quantity = stock_quantity + ?, updated_at = NOW()
-       WHERE service_id = ?`,
+    // ✅ SỬA: bỏ dấu []
+    const result = await db.query(
+      `UPDATE Services SET stock_quantity = stock_quantity + ?, updated_at = NOW() WHERE service_id = ?`,
       [Number(quantity_added), req.params.id]
     );
     if (result.affectedRows === 0) return res.status(404).json({ message: 'Không tìm thấy dịch vụ.' });
 
-    const _svcRows = await db.query('SELECT stock_quantity FROM Services WHERE service_id = ?', [req.params.id]);
-    res.json({ message: 'Nhập hàng thành công.', new_stock: svc.stock_quantity });
+    // ✅ SỬA: tên biến đúng là svcRows, dùng svcRows[0] thay vì svc (lỗi ReferenceError cũ)
+    const svcRows = await db.query('SELECT stock_quantity FROM Services WHERE service_id = ?', [req.params.id]);
+    res.json({ message: 'Nhập hàng thành công.', new_stock: svcRows[0].stock_quantity });
   } catch (err) {
     console.error('[serviceController.addStock]', err);
     res.status(500).json({ message: 'Lỗi server.' });
