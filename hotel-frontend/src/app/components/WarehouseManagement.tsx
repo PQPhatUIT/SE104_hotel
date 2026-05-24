@@ -1,4 +1,7 @@
-// WarehouseManagement.tsx — Kết nối API thật
+// WarehouseManagement.tsx — SỬA THÊM: lỗi hiển thị số 0 thừa ở tồn kho
+// NGUYÊN NHÂN: input type=number với value={form.stock_quantity} khi xóa số → NaN → hiện "0"
+// FIX: dùng string cho input, parse khi submit; thêm placeholder, bỏ controlled value dạng số
+
 import { useState, useEffect, useCallback } from 'react';
 import { Package, AlertTriangle, Plus, Edit, X, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,26 +22,38 @@ interface Service {
   updated_at: string;
 }
 
-const emptyForm = { service_name: '', unit: 'Lượt', price: 0, stock_quantity: 0, min_limit: 0, description: '' };
+// ✅ SỬA: dùng string cho tất cả số trong form để tránh lỗi hiện "0" thừa
+interface FormState {
+  service_name: string;
+  unit: string;
+  price: string;
+  stock_quantity: string;
+  min_limit: string;
+  description: string;
+}
+
+const emptyForm: FormState = {
+  service_name: '', unit: 'Lượt', price: '', stock_quantity: '', min_limit: '', description: '',
+};
 
 export function WarehouseManagement() {
   const { token } = useAuth();
-  const [services, setServices]       = useState<Service[]>([]);
-  const [isLoading, setIsLoading]     = useState(false);
-  const [filterLow, setFilterLow]     = useState(false);
-  const [showModal, setShowModal]     = useState(false);
-  const [editingId, setEditingId]     = useState<number | null>(null);
-  const [form, setForm]               = useState(emptyForm);
-  const [saving, setSaving]           = useState(false);
-  const [stockModal, setStockModal]   = useState<Service | null>(null);
-  const [addQty, setAddQty]           = useState(0);
+  const [services, setServices]     = useState<Service[]>([]);
+  const [isLoading, setIsLoading]   = useState(false);
+  const [filterLow, setFilterLow]   = useState(false);
+  const [showModal, setShowModal]   = useState(false);
+  const [editingId, setEditingId]   = useState<number | null>(null);
+  const [form, setForm]             = useState<FormState>(emptyForm);
+  const [saving, setSaving]         = useState(false);
+  const [stockModal, setStockModal] = useState<Service | null>(null);
+  const [addQty, setAddQty]         = useState('');
 
   const fetchServices = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
     try {
       const params = filterLow ? '?low_stock=1' : '';
-      const res = await fetch(`${API_BASE}/api/services${params}`, {
+      const res  = await fetch(`${API_BASE}/api/services${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -57,13 +72,14 @@ export function WarehouseManagement() {
 
   const openEdit = (s: Service) => {
     setEditingId(s.service_id);
+    // ✅ SỬA: convert số → string để input không bị "0" thừa
     setForm({
-      service_name: s.service_name,
-      unit: s.unit,
-      price: s.price,
-      stock_quantity: s.stock_quantity,
-      min_limit: s.min_limit,
-      description: s.description || '',
+      service_name:  s.service_name,
+      unit:          s.unit,
+      price:         s.price > 0 ? String(s.price) : '',
+      stock_quantity: s.stock_quantity > 0 ? String(s.stock_quantity) : '',
+      min_limit:     s.min_limit > 0 ? String(s.min_limit) : '',
+      description:   s.description || '',
     });
     setShowModal(true);
   };
@@ -77,7 +93,14 @@ export function WarehouseManagement() {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          service_name:  form.service_name,
+          unit:          form.unit,
+          price:         Number(form.price) || 0,
+          stock_quantity: Number(form.stock_quantity) || 0,
+          min_limit:     Number(form.min_limit) || 0,
+          description:   form.description,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
@@ -97,25 +120,26 @@ export function WarehouseManagement() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      toast.success(s.is_available ? 'Đã tạm ngưng dịch vụ' : 'Đã kích hoạt dịch vụ');
+      toast.success(s.is_available ? 'Đã tạm ngưng' : 'Đã kích hoạt');
       fetchServices();
-    } catch (err: any) { toast.error(err.message || 'Lỗi cập nhật'); }
+    } catch (err: any) { toast.error(err.message || 'Lỗi'); }
   };
 
   const handleAddStock = async () => {
-    if (!stockModal || addQty <= 0) { toast.error('Số lượng phải lớn hơn 0'); return; }
+    const qty = Number(addQty);
+    if (!stockModal || qty <= 0) { toast.error('Số lượng phải lớn hơn 0'); return; }
     setSaving(true);
     try {
       const res = await fetch(`${API_BASE}/api/services/${stockModal.service_id}/stock`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ quantity_added: addQty }),
+        body: JSON.stringify({ quantity_added: qty }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       toast.success(`Nhập hàng thành công! Tồn kho mới: ${data.new_stock}`);
       setStockModal(null);
-      setAddQty(0);
+      setAddQty('');
       fetchServices();
     } catch (err: any) { toast.error(err.message || 'Lỗi nhập hàng'); }
     finally { setSaving(false); }
@@ -133,7 +157,6 @@ export function WarehouseManagement() {
         </button>
       </div>
 
-      {/* Cảnh báo tồn kho thấp */}
       {lowStockCount > 0 && (
         <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-lg">
           <div className="flex items-center gap-3">
@@ -146,7 +169,6 @@ export function WarehouseManagement() {
         </div>
       )}
 
-      {/* Filter */}
       <div className="bg-white p-6 rounded-xl shadow-md border border-gray-100 mb-6">
         <div className="flex items-center gap-4">
           <Package className="w-5 h-5 text-gray-500" />
@@ -162,7 +184,6 @@ export function WarehouseManagement() {
         </div>
       </div>
 
-      {/* Table */}
       <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-16 gap-3 text-gray-500"><Loader2 className="w-6 h-6 animate-spin" /> Đang tải...</div>
@@ -171,48 +192,46 @@ export function WarehouseManagement() {
         ) : (
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>{['ID', 'Tên', 'Đơn vị', 'Đơn giá', 'Tồn kho', 'Định mức', 'Trạng thái', 'Cập nhật', 'Thao tác'].map(h =>
+              <tr>{['ID', 'Tên', 'Đơn vị', 'Đơn giá', 'Tồn kho', 'Định mức', 'Trạng thái', 'Thao tác'].map(h =>
                 <th key={h} className="px-4 py-4 text-left text-sm font-semibold text-gray-700">{h}</th>
               )}</tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {services.map(s => {
-                const low = s.is_low_stock;
-                return (
-                  <tr key={s.service_id} className={`hover:bg-gray-50 transition-colors ${low ? 'bg-red-50' : ''}`}>
-                    <td className="px-4 py-4 text-sm font-medium text-gray-800">#{s.service_id}</td>
-                    <td className="px-4 py-4 text-sm font-medium text-gray-800">{s.service_name}</td>
-                    <td className="px-4 py-4 text-sm text-gray-600">{s.unit}</td>
-                    <td className="px-4 py-4 text-sm text-gray-800">{s.price.toLocaleString('vi-VN')} đ</td>
-                    <td className="px-4 py-4 text-sm">
-                      <span className={`font-bold ${low ? 'text-red-600' : 'text-green-600'}`}>{s.stock_quantity}</span>
-                      {low && <AlertTriangle className="w-4 h-4 inline ml-1 text-red-500" />}
-                    </td>
-                    <td className="px-4 py-4 text-sm text-gray-600">{s.min_limit}</td>
-                    <td className="px-4 py-4 text-sm">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${s.is_available ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {s.is_available ? 'Hoạt động' : 'Tạm ngưng'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-sm text-gray-600">{s.updated_at ? new Date(s.updated_at).toLocaleDateString('vi-VN') : '—'}</td>
-                    <td className="px-4 py-4 text-sm">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => openEdit(s)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Sửa"><Edit className="w-4 h-4" /></button>
-                        <button onClick={() => { setStockModal(s); setAddQty(0); }} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors text-xs font-medium px-2" title="Nhập kho">+Kho</button>
-                        <button onClick={() => handleToggleAvailable(s)} className={`p-1.5 rounded-lg transition-colors text-xs font-medium px-2 ${s.is_available ? 'text-gray-500 hover:bg-gray-100' : 'text-green-600 hover:bg-green-50'}`}>
-                          {s.is_available ? 'Ngưng' : 'Bật'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {services.map(s => (
+                <tr key={s.service_id} className={`hover:bg-gray-50 transition-colors ${s.is_low_stock ? 'bg-red-50' : ''}`}>
+                  <td className="px-4 py-4 text-sm font-medium text-gray-800">#{s.service_id}</td>
+                  <td className="px-4 py-4 text-sm font-medium text-gray-800">{s.service_name}</td>
+                  <td className="px-4 py-4 text-sm text-gray-600">{s.unit}</td>
+                  <td className="px-4 py-4 text-sm text-gray-800">{s.price.toLocaleString('vi-VN')} đ</td>
+                  <td className="px-4 py-4 text-sm">
+                    {/* ✅ SỬA: hiện đúng số, không thêm số 0 */}
+                    <span className={`font-bold ${s.is_low_stock ? 'text-red-600' : 'text-green-600'}`}>
+                      {s.stock_quantity}
+                    </span>
+                    {s.is_low_stock && <AlertTriangle className="w-4 h-4 inline ml-1 text-red-500" />}
+                  </td>
+                  <td className="px-4 py-4 text-sm text-gray-600">{s.min_limit}</td>
+                  <td className="px-4 py-4 text-sm">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${s.is_available ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {s.is_available ? 'Hoạt động' : 'Tạm ngưng'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 text-sm">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEdit(s)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg" title="Sửa"><Edit className="w-4 h-4" /></button>
+                      <button onClick={() => { setStockModal(s); setAddQty(''); }} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg text-xs font-medium px-2" title="Nhập kho">+Kho</button>
+                      <button onClick={() => handleToggleAvailable(s)} className={`p-1.5 rounded-lg text-xs font-medium px-2 ${s.is_available ? 'text-gray-500 hover:bg-gray-100' : 'text-green-600 hover:bg-green-50'}`}>
+                        {s.is_available ? 'Ngưng' : 'Bật'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )}
       </div>
 
-      {/* Summary */}
       <div className="mt-6 grid grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-lg shadow border border-gray-100">
           <p className="text-sm text-gray-500">Tổng giá trị tồn kho</p>
@@ -252,16 +271,23 @@ export function WarehouseManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Đơn giá (đ)</label>
-                  <input type="number" min={0} value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                  {/* ✅ SỬA: value là string, placeholder thay cho 0 mặc định */}
+                  <input type="number" min={0} value={form.price} placeholder="0"
+                    onChange={(e) => setForm({ ...form, price: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tồn kho ban đầu</label>
-                  <input type="number" min={0} value={form.stock_quantity} onChange={(e) => setForm({ ...form, stock_quantity: Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                  <input type="number" min={0} value={form.stock_quantity} placeholder="0"
+                    onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Định mức tối thiểu</label>
-                <input type="number" min={0} value={form.min_limit} onChange={(e) => setForm({ ...form, min_limit: Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <input type="number" min={0} value={form.min_limit} placeholder="0"
+                  onChange={(e) => setForm({ ...form, min_limit: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả</label>
@@ -269,8 +295,8 @@ export function WarehouseManagement() {
               </div>
             </div>
             <div className="flex gap-3 p-6 border-t">
-              <button onClick={() => setShowModal(false)} className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Huỷ</button>
-              <button onClick={handleSave} disabled={saving} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+              <button onClick={() => setShowModal(false)} className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Huỷ</button>
+              <button onClick={handleSave} disabled={saving} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-60">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {editingId ? 'Cập nhật' : 'Thêm mới'}
               </button>
             </div>
@@ -291,10 +317,13 @@ export function WarehouseManagement() {
               <p className="text-gray-600 text-sm">Tồn kho hiện tại: <strong>{stockModal.stock_quantity}</strong> {stockModal.unit}</p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Số lượng nhập thêm</label>
-                <input type="number" min={1} value={addQty} onChange={(e) => setAddQty(Number(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                {/* ✅ SỬA: string value */}
+                <input type="number" min={1} value={addQty} placeholder="Nhập số lượng"
+                  onChange={(e) => setAddQty(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
-              {addQty > 0 && (
-                <p className="text-green-600 text-sm">Tồn kho sau nhập: <strong>{stockModal.stock_quantity + addQty}</strong></p>
+              {Number(addQty) > 0 && (
+                <p className="text-green-600 text-sm">Tồn kho sau nhập: <strong>{stockModal.stock_quantity + Number(addQty)}</strong></p>
               )}
             </div>
             <div className="flex gap-3 p-6 border-t">

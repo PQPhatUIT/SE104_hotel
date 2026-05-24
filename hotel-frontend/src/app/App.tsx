@@ -1,3 +1,7 @@
+// App.tsx — SỬA LỖI: Route "/" (Báo cáo) bị redirect về /explore-rooms khi Admin bấm vào
+// NGUYÊN NHÂN: Route "/" ngoài cùng (Root) đang redirect → /explore-rooms TRƯỚC khi AppLayout xử lý
+// FIX: Đổi route "/" ngoài cùng thành /explore-rooms, để AppLayout xử lý "/" bên trong
+
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -8,7 +12,6 @@ import { Login } from './components/Login';
 import { Register } from './components/Register';
 import { Unauthorized } from './components/Unauthorized';
 
-// Admin & Staff Pages
 import { Dashboard } from './components/Dashboard';
 import { RoomManagement } from './components/RoomManagement';
 import { BookingForm } from './components/BookingForm';
@@ -18,14 +21,13 @@ import { WarehouseManagement } from './components/WarehouseManagement';
 import { EmployeeManagement } from './components/EmployeeManagement';
 import { SystemManagement } from './components/SystemManagement';
 
-// Customer & Public Pages
 import CustomerDashboard from './components/customer/CustomerDashboard';
 import { CustomerRooms } from './components/customer/CustomerRooms';
 import CustomerBookings from './components/customer/CustomerBookings';
 import CustomerProfile from './components/customer/CustomerProfile';
 import { ExploreRooms } from './components/ExploreRooms';
 
-// ── Redirect sau khi đăng nhập thành công → đúng trang theo role ──────────────
+// ── Redirect sau đăng nhập → đúng trang theo role ────────────────────────────
 function RoleBasedRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/explore-rooms" replace />;
@@ -33,7 +35,7 @@ function RoleBasedRedirect() {
     case 'Admin':
     case 'Quản lý':
     case 'Thủ kho':
-      return <Navigate to="/" replace />;
+      return <Navigate to="/dashboard" replace />;
     case 'Lễ tân':
       return <Navigate to="/rooms" replace />;
     case 'Khách hàng':
@@ -43,11 +45,9 @@ function RoleBasedRedirect() {
   }
 }
 
-// ── Layout sau khi đăng nhập (có Sidebar + các route nội bộ) ─────────────────
+// ── Layout sau khi đăng nhập ──────────────────────────────────────────────────
 function AppLayout() {
   const { isAuthenticated } = useAuth();
-
-  // Chưa đăng nhập → trả về /explore-rooms thay vì hiện Login ngay
   if (!isAuthenticated) return <Navigate to="/explore-rooms" replace />;
 
   return (
@@ -56,11 +56,15 @@ function AppLayout() {
         <Sidebar />
         <main className="flex-1 overflow-y-auto">
           <Routes>
+            {/* Customer routes */}
             <Route path="/customer-dashboard" element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerDashboard /></ProtectedRoute>} />
             <Route path="/customer-rooms"     element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerRooms /></ProtectedRoute>} />
             <Route path="/customer-bookings"  element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerBookings /></ProtectedRoute>} />
             <Route path="/customer-profile"   element={<ProtectedRoute allowedRoles={['Khách hàng']}><CustomerProfile /></ProtectedRoute>} />
-            <Route path="/"          element={<ProtectedRoute allowedRoles={['Quản lý', 'Admin', 'Thủ kho']}><Dashboard /></ProtectedRoute>} />
+
+            {/* Staff routes */}
+            {/* ✅ SỬA: dùng /dashboard thay vì "/" để tránh conflict với route gốc */}
+            <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['Quản lý', 'Admin', 'Thủ kho']}><Dashboard /></ProtectedRoute>} />
             <Route path="/rooms"     element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><RoomManagement /></ProtectedRoute>} />
             <Route path="/bookings"  element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><BookingForm /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý', 'Admin']}><CustomerManagement /></ProtectedRoute>} />
@@ -83,12 +87,10 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Trang mặc định khi vào web lần đầu → xem phòng (không cần đăng nhập) */}
-          <Route path="/"              element={<Navigate to="/explore-rooms" replace />} />
+          {/* ✅ SỬA: "/" không còn redirect ngay → để AppLayout xử lý (nếu đã login → /dashboard) */}
           <Route path="/explore-rooms" element={<ExploreRooms />} />
           <Route path="/login"         element={<Login />} />
           <Route path="/register"      element={<Register />} />
-          {/* Mọi route nội bộ đều qua AppLayout (có kiểm tra auth) */}
           <Route path="/*"             element={<AppLayout />} />
         </Routes>
         <Toaster position="top-right" richColors />
