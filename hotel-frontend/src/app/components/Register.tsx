@@ -54,42 +54,22 @@ export function Register() {
 
     setIsLoading(true);
     try {
-      // Gọi thẳng API để lấy thông báo lỗi chính xác từ server
-      const res = await fetch(`${API_BASE}/api/auth/register`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          username:  formData.username,
-          full_name: formData.fullName,
-          phone:     formData.phone,
-          email:     formData.email,
-          password:  formData.password,
-        }),
+      const result = await register({
+        username: formData.username,
+        fullName: formData.fullName,
+        phone:    formData.phone,
+        email:    formData.email,
+        password: formData.password,
       });
 
-      if (res.ok) {
-        // Đăng ký thành công → đăng nhập luôn qua AuthContext
-        const success = await register({
-          username: formData.username,
-          fullName: formData.fullName,
-          phone:    formData.phone,
-          email:    formData.email,
-          password: formData.password,
-        });
-
-        if (success) {
-          const hasPending = Boolean(sessionStorage.getItem(PENDING_BOOKING_KEY));
-          navigate(hasPending ? '/customer-rooms' : '/customer-dashboard', { replace: true });
-        }
+      if (result === true) {
+        const hasPending = Boolean(sessionStorage.getItem(PENDING_BOOKING_KEY));
+        navigate(hasPending ? '/customer-rooms' : '/customer-dashboard', { replace: true });
+      } else if (typeof result === 'string') {
+        // AuthContext trả về message lỗi cụ thể từ server
+        setApiError(result);
       } else {
-        // Lấy thông báo lỗi CỤ THỂ từ server thay vì hiện thông báo chung
-        const data = await res.json();
-        if (res.status === 409) {
-          // Trùng username/email — server trả về message rõ ràng
-          setApiError(data.message || 'Tên tài khoản hoặc email đã tồn tại. Vui lòng chọn tên khác.');
-        } else {
-          setApiError(data.message || 'Đăng ký thất bại. Vui lòng thử lại.');
-        }
+        setApiError('Đăng ký thất bại. Vui lòng thử lại.');
       }
     } catch {
       setApiError('Không thể kết nối server. Kiểm tra backend đã chạy chưa.');

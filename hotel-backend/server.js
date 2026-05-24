@@ -8,7 +8,7 @@ require('./config/db');
 const { login, getMe }                                              = require('./controllers/authController');
 const { register, updateProfile, getAccounts,
         createAccount, updateRole, updateStatus, resetPassword }   = require('./controllers/accountController');
-const { processPayment, getInvoiceByBookingId }                    = require('./controllers/paymentController');
+const { processPayment, getInvoiceByBookingId, getInvoices }                    = require('./controllers/paymentController');
 const { getMyBookings, getMyInvoices }                             = require('./controllers/customerController');
 const { getCustomers, getCustomerById,
         createCustomer, updateCustomer, deleteCustomer }           = require('./controllers/staffCustomerController');
@@ -59,6 +59,7 @@ app.patch('/api/bookings/:id/cancel',       verifyToken, isStaff,    cancelBooki
 
 app.post ('/api/payments',                  verifyToken, isStaff,    processPayment);
 app.get  ('/api/payments/:booking_id',      verifyToken, isStaff,    getInvoiceByBookingId);
+app.get  ('/api/invoices',                  verifyToken, isAdminMgr, getInvoices);
 
 app.get   ('/api/customers',                verifyToken, isStaff,    getCustomers);
 app.get   ('/api/customers/:id',            verifyToken, isStaff,    getCustomerById);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Users, X, CalendarCheck, Wifi, Tv, Wind, Wine, Bath, Waves } from 'lucide-react';
+import { Users, X, CalendarCheck, Wifi, Tv, Wind, Wine, Bath, Waves, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { useBookings, Booking } from '../../context/BookingContext';
@@ -16,6 +16,70 @@ function AmenityIcon({ name }: { name: string }) {
   if (name === 'Bồn tắm')   return <Bath  className="w-3.5 h-3.5" />;
   if (name === 'View biển') return <Waves className="w-3.5 h-3.5" />;
   return null;
+}
+
+// ── Modal chi tiết phòng ──────────────────────────────────────────────────────
+function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: () => void; onBook: () => void }) {
+  const typeColorMap: Record<RoomInfo['type'], string> = {
+    Standard: 'bg-blue-100 text-blue-700',
+    Deluxe:   'bg-purple-100 text-purple-700',
+    Suite:    'bg-orange-100 text-orange-700',
+  };
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+        <div className="relative">
+          <img src={room.image} alt={room.name} className="w-full object-cover" style={{ height: '260px' }} />
+          <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+          <span className={`absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold ${room.available ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+            {room.available ? 'Còn trống' : 'Đã đặt'}
+          </span>
+        </div>
+        <div className="p-6">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">{room.name}</h2>
+              <p className="text-gray-500 text-sm mt-1">{room.description}</p>
+            </div>
+            <span className={`ml-3 flex-shrink-0 px-3 py-1 text-xs rounded-full font-semibold ${typeColorMap[room.type]}`}>{room.type}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+            <Users className="w-4 h-4" />
+            <span>Sức chứa tối đa: {room.capacity} người</span>
+          </div>
+          <div className="mb-5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tiện nghi</p>
+            <div className="flex flex-wrap gap-2">
+              {room.amenities.map((a) => (
+                <span key={a} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded-lg">
+                  <AmenityIcon name={a} />{a}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+            <div>
+              <p className="text-xs text-gray-400">Giá mỗi đêm</p>
+              <p className="text-2xl font-bold text-blue-600">{room.price.toLocaleString('vi-VN')} đ</p>
+            </div>
+            <button
+              onClick={onBook}
+              disabled={!room.available}
+              className={`px-6 py-2.5 rounded-xl font-medium text-sm transition-colors ${room.available ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+            >
+              {room.available ? 'Đặt phòng ngay' : 'Hết phòng'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Booking Modal ─────────────────────────────────────────────────────────────
@@ -199,6 +263,7 @@ export function CustomerRooms() {
   const [searchParams]                    = useSearchParams();
   const [selectedType, setSelectedType]   = useState<'all' | 'Standard' | 'Deluxe' | 'Suite'>('all');
   const [selectedRoom, setSelectedRoom]   = useState<RoomInfo | null>(null);
+  const [detailRoom,   setDetailRoom]     = useState<RoomInfo | null>(null);
 
   const { user }        = useAuth();
   const { addBooking }  = useBookings();
@@ -326,20 +391,23 @@ export function CustomerRooms() {
             key={room.id}
             className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow flex flex-col"
           >
-            {/* Ảnh */}
-            <div className="relative">
+            {/* Ảnh — tỉ lệ cố định 4:3 */}
+            <div className="relative w-full" style={{ paddingTop: '66.67%' }}>
               <img
                 src={room.image}
                 alt={room.name}
-                className="w-full h-48 object-cover"
+                className="absolute inset-0 w-full h-full object-cover"
+                loading="lazy"
               />
-              <span
-                className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-semibold ${
-                  room.available ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-                }`}
-              >
+              <span className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-semibold ${room.available ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
                 {room.available ? 'Còn trống' : 'Đã đặt'}
               </span>
+              <button
+                onClick={() => setDetailRoom(room)}
+                className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 bg-black/50 text-white text-xs rounded-lg hover:bg-black/70 transition-colors"
+              >
+                <Eye className="w-3.5 h-3.5" /> Xem chi tiết
+              </button>
             </div>
 
             {/* Nội dung */}
@@ -394,6 +462,18 @@ export function CustomerRooms() {
           </div>
         ))}
       </div>
+
+      {/* Modal chi tiết phòng */}
+      {detailRoom && (
+        <RoomDetailModal
+          room={detailRoom}
+          onClose={() => setDetailRoom(null)}
+          onBook={() => {
+            setDetailRoom(null);
+            handleBookClick(detailRoom);
+          }}
+        />
+      )}
 
       {/* Booking Modal */}
       {selectedRoom && (

@@ -22,7 +22,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<UserRole | null>;
-  register: (data: RegisterData) => Promise<boolean>;
+  register: (data: RegisterData) => Promise<true | string>;
   logout: () => void;
   isAuthenticated: boolean;
   hasRole: (roles: UserRole[]) => boolean;
@@ -154,35 +154,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ── register: gọi API thật ────────────────────────────────────────────────
-  const register = async (data: RegisterData): Promise<boolean> => {
+  const register = async (data: RegisterData): Promise<true | string> => {
     try {
       const res = await fetch(`${API_BASE}/api/auth/register`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           username:  data.username,
-          full_name: data.fullName,   // Backend dùng snake_case
+          full_name: data.fullName,
           phone:     data.phone,
           email:     data.email,
           password:  data.password,
         }),
       });
 
-      if (!res.ok) return false;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return body.message || 'Đăng ký thất bại. Vui lòng thử lại.';
+      }
 
-      const result: { token: string; user: Record<string, unknown> } = await res.json();
-      const safeUser = sanitizeUser(result.user);
+      // Đăng ký thành công → tự động đăng nhập để lấy token
+      const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ username: data.username, password: data.password }),
+      });
 
-      saveSession(result.token, safeUser);
-      setToken(result.token);
+      if (!loginRes.ok) return 'Đăng ký thành công nhưng không thể tự động đăng nhập. Vui lòng đăng nhập thủ công.';
+
+      const loginData: { token: string; user: Record<string, unknown> } = await loginRes.json();
+      const safeUser = sanitizeUser(loginData.user);
+
+      saveSession(loginData.token, safeUser);
+      setToken(loginData.token);
       setUser(safeUser);
 
       return true;
 
     } catch (err) {
       console.error('[AuthContext.register] Network error:', err);
-      return false;
+      return 'Không thể kết nối server.';
     }
   };
 

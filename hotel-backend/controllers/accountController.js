@@ -136,31 +136,52 @@ const register = async (req, res) => {
   if (password.length < 6)
     return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
 
-  const t = await db.beginTransaction();
   try {
-    const hash    = await bcrypt.hash(password, 10);
-    const custRes = await t.query(
-      'INSERT INTO Customers (full_name, phone, email) VALUES (?, ?, ?)',
-      [full_name, phone||null, email||null]
+    // Kiểm tra trùng username trước khi insert
+    const existing = await db.query(
+      'SELECT account_id FROM Accounts WHERE username = ?', [username]
     );
-    const customerId = custRes.insertId;
+    if (existing.length > 0)
+      return res.status(409).json({ message: 'Tên đăng nhập đã tồn tại. Vui lòng chọn tên khác.' });
 
-    const accRes = await t.query(
-      `INSERT INTO Accounts (username, password, full_name, phone, email, role, is_active, customer_id)
-       VALUES (?, ?, ?, ?, ?, 'customer', 1, ?)`,
-      [username, hash, full_name, phone||null, email||null, customerId]
-    );
+    // Kiểm tra trùng email nếu có
+    if (email) {
+      const emailCheck = await db.query(
+        'SELECT account_id FROM Accounts WHERE email = ?', [email]
+      );
+      if (emailCheck.length > 0)
+        return res.status(409).json({ message: 'Email đã được sử dụng. Vui lòng dùng email khác.' });
+    }
 
-    await t.commit();
-    res.status(201).json({
-      message:     'Đăng ký thành công.',
-      account_id:  accRes.insertId,
-      customer_id: customerId,
-    });
+    const t = await db.beginTransaction();
+    try {
+      const hash    = await bcrypt.hash(password, 10);
+      const custRes = await t.query(
+        'INSERT INTO Customers (full_name, phone, email) VALUES (?, ?, ?)',
+        [full_name, phone||null, email||null]
+      );
+      const customerId = custRes.insertId;
+
+      const accRes = await t.query(
+        `INSERT INTO Accounts (username, password, full_name, phone, email, role, is_active, customer_id)
+         VALUES (?, ?, ?, ?, ?, 'customer', 1, ?)`,
+        [username, hash, full_name, phone||null, email||null, customerId]
+      );
+
+      await t.commit();
+      res.status(201).json({
+        message:     'Đăng ký thành công.',
+        account_id:  accRes.insertId,
+        customer_id: customerId,
+      });
+    } catch (err) {
+      await t.rollback();
+      if (err.code === 'ER_DUP_ENTRY')
+        return res.status(409).json({ message: 'Tên đăng nhập hoặc email đã tồn tại.' });
+      console.error('[accountController.register] transaction error:', err);
+      res.status(500).json({ message: 'Lỗi server.' });
+    }
   } catch (err) {
-    await t.rollback();
-    if (err.code === 'ER_DUP_ENTRY')
-      return res.status(409).json({ message: 'Tên đăng nhập hoặc email đã tồn tại.' });
     console.error('[accountController.register]', err);
     res.status(500).json({ message: 'Lỗi server.' });
   }
