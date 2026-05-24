@@ -130,6 +130,9 @@ const resetPassword = async (req, res) => {
 };
 
 const register = async (req, res) => {
+  // DEBUG LOG — xóa sau khi fix xong
+  console.log('[register] body:', JSON.stringify(req.body));
+
   const { username, password, full_name, phone, email } = req.body;
   if (!username || !password || !full_name)
     return res.status(400).json({ message: 'Thiếu thông tin bắt buộc.' });
@@ -137,19 +140,29 @@ const register = async (req, res) => {
     return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
 
   try {
-    // Kiểm tra trùng username trước khi insert
+    // Kiểm tra trùng username
     const existing = await db.query(
       'SELECT account_id FROM Accounts WHERE username = ?', [username]
     );
+    console.log('[register] existing username check:', existing.length);
     if (existing.length > 0)
       return res.status(409).json({ message: 'Tên đăng nhập đã tồn tại. Vui lòng chọn tên khác.' });
 
-    // Kiểm tra trùng email nếu có
+    // Kiểm tra trùng email trong Accounts
     if (email) {
-      const emailCheck = await db.query(
+      const emailCheckAcc = await db.query(
         'SELECT account_id FROM Accounts WHERE email = ?', [email]
       );
-      if (emailCheck.length > 0)
+      console.log('[register] existing email in Accounts:', emailCheckAcc.length);
+      if (emailCheckAcc.length > 0)
+        return res.status(409).json({ message: 'Email đã được sử dụng. Vui lòng dùng email khác.' });
+
+      // Kiểm tra trùng email trong Customers
+      const emailCheckCust = await db.query(
+        'SELECT customer_id FROM Customers WHERE email = ?', [email]
+      );
+      console.log('[register] existing email in Customers:', emailCheckCust.length);
+      if (emailCheckCust.length > 0)
         return res.status(409).json({ message: 'Email đã được sử dụng. Vui lòng dùng email khác.' });
     }
 
@@ -157,7 +170,7 @@ const register = async (req, res) => {
     try {
       const hash    = await bcrypt.hash(password, 10);
       const custRes = await t.query(
-        'INSERT INTO Customers (full_name, phone, email) VALUES (?, ?, ?)',
+        'INSERT INTO Customers (full_name, phone, email, id_card) VALUES (?, ?, ?, NULL)',
         [full_name, phone||null, email||null]
       );
       const customerId = custRes.insertId;
@@ -169,6 +182,7 @@ const register = async (req, res) => {
       );
 
       await t.commit();
+      console.log('[register] success! account_id:', accRes.insertId);
       res.status(201).json({
         message:     'Đăng ký thành công.',
         account_id:  accRes.insertId,
@@ -176,13 +190,13 @@ const register = async (req, res) => {
       });
     } catch (err) {
       await t.rollback();
+      console.error('[register] transaction error:', err.code, err.message);
       if (err.code === 'ER_DUP_ENTRY')
         return res.status(409).json({ message: 'Tên đăng nhập hoặc email đã tồn tại.' });
-      console.error('[accountController.register] transaction error:', err);
       res.status(500).json({ message: 'Lỗi server.' });
     }
   } catch (err) {
-    console.error('[accountController.register]', err);
+    console.error('[register] outer error:', err.code, err.message);
     res.status(500).json({ message: 'Lỗi server.' });
   }
 };
