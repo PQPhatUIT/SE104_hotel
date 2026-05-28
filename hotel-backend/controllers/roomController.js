@@ -89,7 +89,7 @@ const getRoomById = async (req, res) => {
 // PATCH /api/rooms/:id/status
 const updateRoomStatus = async (req, res) => {
   const { status } = req.body;
-  const VALID = ['available', 'occupied', 'maintenance'];
+  const VALID = ['available', 'occupied', 'booked', 'maintenance'];
 
   if (!VALID.includes(status)) {
     return res.status(400).json({ message: `status phải là một trong: ${VALID.join(', ')}` });
@@ -146,4 +146,43 @@ const getRoomTypes = async (_req, res) => {
   }
 };
 
-module.exports = { getRooms, getAvailableRooms, getRoomById, updateRoomStatus, createRoom, getRoomTypes };
+
+// ── DELETE /api/rooms/:id ─────────────────────────────────────────────────
+// QĐ 2.2: Không được xóa phòng đang ở trạng thái 'occupied' hoặc 'booked'
+const deleteRoom = async (req, res) => {
+  try {
+    const rows = await db.query(
+      'SELECT status, room_number FROM Rooms WHERE room_id = ?',
+      [parseInt(req.params.id, 10)]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Không tìm thấy phòng.' });
+
+    const room = rows[0];
+    if (room.status === 'occupied' || room.status === 'booked') {
+      return res.status(409).json({
+        message: `Không thể xóa phòng ${room.room_number} — đang ở trạng thái "${room.status === 'occupied' ? 'Đang sử dụng' : 'Đã đặt'}". Phải trả phòng trước.`,
+      });
+    }
+
+    // Kiểm tra booking active
+    const bookings = await db.query(
+      `SELECT COUNT(*) AS cnt FROM Bookings
+       WHERE room_id = ? AND status IN ('pending','confirmed','checked_in')`,
+      [parseInt(req.params.id, 10)]
+    );
+    if (parseInt(bookings[0]?.cnt || '0') > 0) {
+      return res.status(409).json({ message: 'Không thể xóa: phòng còn lịch đặt đang hoạt động.' });
+    }
+
+    await db.query('DELETE FROM Rooms WHERE room_id = ?', [parseInt(req.params.id, 10)]);
+    res.json({ message: `Đã xóa phòng ${room.room_number} thành công.` });
+  } catch (err) {
+    if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(409).json({ message: 'Không thể xóa phòng còn lịch sử đặt phòng.' });
+    }
+    console.error('[roomController.deleteRoom]', err);
+    res.status(500).json({ message: 'Lỗi server.' });
+  }
+};
+
+module.exports = { getRooms, getAvailableRooms, getRoomById, updateRoomStatus, createRoom, getRoomTypes, deleteRoom };

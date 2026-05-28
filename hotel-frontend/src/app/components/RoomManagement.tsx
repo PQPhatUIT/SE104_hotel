@@ -1,6 +1,6 @@
 // RoomManagement.tsx — Kết nối API thật
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit, Loader2, X, Save } from 'lucide-react';
+import { Plus, Edit, Trash2, Loader2, X, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 
@@ -13,7 +13,7 @@ interface Room {
   type_name: string;
   base_price: number;
   max_occupancy: number;
-  status: 'available' | 'occupied' | 'maintenance';
+  status: 'available' | 'occupied' | 'booked' | 'maintenance';
   updated_at: string;
 }
 
@@ -40,6 +40,7 @@ export function RoomManagement() {
   const [editRoom, setEditRoom]   = useState<Room | null>(null);
   const [form, setForm]           = useState({ room_number: '', room_type_id: '', status: 'available' });
   const [saving, setSaving]       = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const fetchRooms = useCallback(async () => {
     setIsLoading(true);
@@ -101,6 +102,31 @@ export function RoomManagement() {
       fetchRooms();
     } catch (err: any) { toast.error(err.message || 'Lỗi lưu'); }
     finally { setSaving(false); }
+  };
+
+
+  // ── Xóa phòng — QĐ 2.2: không xóa khi đang ở ──────────────────────────
+  const handleDelete = async (room: Room) => {
+    if (room.status === 'occupied' || room.status === 'booked') {
+      toast.error(`Không thể xóa phòng ${room.room_number} đang có khách. Đổi trạng thái về "Trống" trước.`);
+      return;
+    }
+    if (!confirm(`Bạn chắc chắn muốn xóa phòng ${room.room_number}? Hành động này không thể hoàn tác.`)) return;
+    setDeletingId(room.room_id);
+    try {
+      const res  = await fetch(`${API_BASE}/api/rooms/${room.room_id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      toast.success(data.message);
+      fetchRooms();
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi xóa phòng');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const counts = {
@@ -170,7 +196,25 @@ export function RoomManagement() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">{r.updated_at ? new Date(r.updated_at).toLocaleDateString('vi-VN') : '—'}</td>
                   <td className="px-6 py-4 text-sm">
-                    <button onClick={() => openEdit(r)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit className="w-4 h-4" /></button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEdit(r)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Sửa trạng thái">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(r)}
+                        disabled={deletingId === r.room_id || r.status === 'occupied' || r.status === 'booked'}
+                        className={`p-2 rounded-lg transition-colors ${
+                          r.status === 'occupied' || r.status === 'booked'
+                            ? 'text-gray-300 cursor-not-allowed'
+                            : 'text-red-500 hover:bg-red-50'
+                        }`}
+                        title={r.status === 'occupied' || r.status === 'booked' ? 'Không thể xóa khi phòng đang sử dụng' : 'Xóa phòng'}
+                      >
+                        {deletingId === r.room_id
+                          ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : <Trash2 className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

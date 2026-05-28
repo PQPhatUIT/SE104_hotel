@@ -74,6 +74,14 @@ function TabThanhToan({ token }: { token: string }) {
 
   const handlePayment = async () => {
     if (!selected) return;
+    const ok = window.confirm(
+      `Xác nhận thanh toán & Check-out?\n\n` +
+      `Khách: ${selected.customer_name}\n` +
+      `Phòng: ${selected.room_number} (${selected.room_type})\n` +
+      `Tổng tiền: ${totalAmount.toLocaleString('vi-VN')} đ\n\n` +
+      `Hành động này sẽ trả phòng và không thể hoàn tác.`
+    );
+    if (!ok) return;
     setIsPaying(true);
     try {
       const res  = await fetch(`${API_BASE}/api/payments`, {

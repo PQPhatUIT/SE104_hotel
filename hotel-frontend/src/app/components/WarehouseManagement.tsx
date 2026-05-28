@@ -3,7 +3,7 @@
 // FIX: dùng string cho input, parse khi submit; thêm placeholder, bỏ controlled value dạng số
 
 import { useState, useEffect, useCallback } from 'react';
-import { Package, AlertTriangle, Plus, Edit, X, Save, Loader2 } from 'lucide-react';
+import { Package, AlertTriangle, Plus, Edit, X, Save, Loader2 , Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 
@@ -45,6 +45,7 @@ export function WarehouseManagement() {
   const [editingId, setEditingId]   = useState<number | null>(null);
   const [form, setForm]             = useState<FormState>(emptyForm);
   const [saving, setSaving]         = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [stockModal, setStockModal] = useState<Service | null>(null);
   const [addQty, setAddQty]         = useState('');
 
@@ -148,6 +149,27 @@ export function WarehouseManagement() {
   const lowStockCount = services.filter(s => s.is_low_stock).length;
   const totalValue    = services.reduce((sum, s) => sum + s.price * s.stock_quantity, 0);
 
+
+  // ── Xóa dịch vụ/vật tư ────────────────────────────────────────────────────
+  const handleDelete = async (svc: any) => {
+    if (!confirm(`Bạn chắc chắn muốn xóa "${svc.service_name}"?\nHành động này không thể hoàn tác.`)) return;
+    setDeletingId(svc.service_id);
+    try {
+      const res  = await fetch(`${API_BASE}/api/services/${svc.service_id}`, {
+        method:  'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      toast.success(data.message);
+      fetchServices();
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi xóa dịch vụ');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
@@ -197,7 +219,7 @@ export function WarehouseManagement() {
               )}</tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {services.map(s => (
+              {services.map((s: any) => (
                 <tr key={s.service_id} className={`hover:bg-gray-50 transition-colors ${s.is_low_stock ? 'bg-red-50' : ''}`}>
                   <td className="px-4 py-4 text-sm font-medium text-gray-800">#{s.service_id}</td>
                   <td className="px-4 py-4 text-sm font-medium text-gray-800">{s.service_name}</td>

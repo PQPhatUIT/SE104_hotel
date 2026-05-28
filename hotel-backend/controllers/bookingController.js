@@ -92,7 +92,7 @@ const createBooking = async (req, res) => {
          (customer_id, room_id, created_by, check_in_date, check_out_date,
           actual_guests, deposit_amount, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
-      [parseInt(customer_id,10), parseInt(room_id,10), req.user?.id || null,
+      [parseInt(customer_id,10), parseInt(room_id,10), req.user?.id ? parseInt(req.user.id, 10) : null,
        check_in_date, check_out_date, parseInt(actual_guests,10), parseFloat(deposit_amount)]
     );
 

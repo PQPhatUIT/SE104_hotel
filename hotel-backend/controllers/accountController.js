@@ -48,8 +48,8 @@ const createAccount = async (req, res) => {
   const dbRole = ROLE_FE_TO_DB[role] || role;
   if (!['admin','manager','receptionist','warehouse','customer'].includes(dbRole))
     return res.status(400).json({ message: 'role không hợp lệ.' });
-  if (password.length < 6)
-    return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+  if (password.length < 8)
+    return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 8 ký tự.' });
 
   try {
     const hash   = await bcrypt.hash(password, 10);
@@ -131,21 +131,19 @@ const resetPassword = async (req, res) => {
 
 const register = async (req, res) => {
   // DEBUG LOG — xóa sau khi fix xong
-  console.log('[register] body:', JSON.stringify(req.body));
 
   const { username, password, full_name, phone, email } = req.body;
   if (!username || !password || !full_name)
     return res.status(400).json({ message: 'Thiếu thông tin bắt buộc.' });
-  if (password.length < 6)
-    return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+  if (password.length < 8)
+    return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 8 ký tự.' });
 
   try {
     // Kiểm tra trùng username
     const existing = await db.query(
       'SELECT account_id FROM Accounts WHERE username = ?', [username]
     );
-    console.log('[register] existing username check:', existing.length);
-    if (existing.length > 0)
+      if (existing.length > 0)
       return res.status(409).json({ message: 'Tên đăng nhập đã tồn tại. Vui lòng chọn tên khác.' });
 
     // Kiểm tra trùng email trong Accounts
@@ -153,16 +151,14 @@ const register = async (req, res) => {
       const emailCheckAcc = await db.query(
         'SELECT account_id FROM Accounts WHERE email = ?', [email]
       );
-      console.log('[register] existing email in Accounts:', emailCheckAcc.length);
-      if (emailCheckAcc.length > 0)
+          if (emailCheckAcc.length > 0)
         return res.status(409).json({ message: 'Email đã được sử dụng. Vui lòng dùng email khác.' });
 
       // Kiểm tra trùng email trong Customers
       const emailCheckCust = await db.query(
         'SELECT customer_id FROM Customers WHERE email = ?', [email]
       );
-      console.log('[register] existing email in Customers:', emailCheckCust.length);
-      if (emailCheckCust.length > 0)
+          if (emailCheckCust.length > 0)
         return res.status(409).json({ message: 'Email đã được sử dụng. Vui lòng dùng email khác.' });
     }
 
@@ -170,8 +166,8 @@ const register = async (req, res) => {
     try {
       const hash    = await bcrypt.hash(password, 10);
       const custRes = await t.query(
-        'INSERT INTO Customers (full_name, phone, email, id_card) VALUES (?, ?, ?, NULL)',
-        [full_name, phone||null, email||null]
+        'INSERT INTO Customers (full_name, phone, email, id_card) VALUES (?, ?, ?, ?)',
+        [full_name, phone||null, email||null, `PENDING_${username.toUpperCase()}`]
       );
       const customerId = custRes.insertId;
 
@@ -182,8 +178,7 @@ const register = async (req, res) => {
       );
 
       await t.commit();
-      console.log('[register] success! account_id:', accRes.insertId);
-      res.status(201).json({
+          res.status(201).json({
         message:     'Đăng ký thành công.',
         account_id:  accRes.insertId,
         customer_id: customerId,

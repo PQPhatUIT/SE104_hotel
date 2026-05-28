@@ -129,4 +129,36 @@ const addStock = async (req, res) => {
   }
 };
 
-module.exports = { getServices, getServiceById, createService, updateService, addStock };
+
+// ── DELETE /api/services/:id ──────────────────────────────────────────────────
+// Không cho xóa nếu dịch vụ đang có trong hóa đơn (lịch sử)
+const deleteService = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+
+    // Kiểm tra tên dịch vụ để thông báo rõ ràng
+    const rows = await db.query('SELECT service_name FROM Services WHERE service_id = ?', [id]);
+    if (!rows.length) return res.status(404).json({ message: 'Không tìm thấy dịch vụ.' });
+
+    // Kiểm tra có trong Invoice_Details không
+    const used = await db.query(
+      'SELECT COUNT(*) AS cnt FROM Invoice_Details WHERE service_id = ?', [id]
+    );
+    if (parseInt(used[0]?.cnt || '0') > 0) {
+      return res.status(409).json({
+        message: `Không thể xóa "${rows[0].service_name}" vì đã có trong lịch sử hóa đơn.`,
+      });
+    }
+
+    await db.query('DELETE FROM Services WHERE service_id = ?', [id]);
+    res.json({ message: `Đã xóa dịch vụ "${rows[0].service_name}" thành công.` });
+  } catch (err) {
+    if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(409).json({ message: 'Không thể xóa: dịch vụ đang được sử dụng.' });
+    }
+    console.error('[serviceController.deleteService]', err);
+    res.status(500).json({ message: 'Lỗi server.' });
+  }
+};
+
+module.exports = { getServices, getServiceById, createService, updateService, addStock, deleteService };

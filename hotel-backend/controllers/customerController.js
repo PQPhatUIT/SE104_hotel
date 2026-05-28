@@ -30,7 +30,7 @@ const getMyBookings = async (req, res) => {
          rt.base_price,
          COALESCE(
            inv.total_amount,
-           DATEDIFF(b.check_out_date, b.check_in_date) * rt.base_price - b.deposit_amount
+           GREATEST(0, DATEDIFF(b.check_out_date, b.check_in_date) * rt.base_price - b.deposit_amount)
          ) AS total_amount
        FROM Bookings b
        JOIN Rooms      r   ON b.room_id      = r.room_id
