@@ -460,7 +460,7 @@ export function CustomerRooms() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/bookings`, {
+      const res = await fetch(`${API_BASE}/api/customer/bookings`, {
         method:  'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -539,8 +539,11 @@ export function CustomerRooms() {
               <div className="relative w-full" style={{ paddingTop: '66.67%' }}>
                 <img src={room.image} alt={`Phòng ${room.room_number}`}
                   className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                <span className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-semibold ${room.status === 'available' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-                  {room.status === 'available' ? 'Còn trống' : 'Không trống'}
+                <span className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-semibold ${
+                  room.status === 'available' ? 'bg-green-500 text-white' :
+                  room.status === 'maintenance' ? 'bg-yellow-500 text-white' :
+                  'bg-red-500 text-white'}`}>
+                  {room.status === 'available' ? 'Còn trống' : room.status === 'maintenance' ? 'Bảo trì' : 'Hết phòng'}
                 </span>
                 <button onClick={() => setDetailRoom(room)}
                   className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 bg-black/50 text-white text-xs rounded-lg hover:bg-black/70 transition-colors">

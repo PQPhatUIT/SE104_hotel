@@ -132,7 +132,7 @@ const resetPassword = async (req, res) => {
 const register = async (req, res) => {
   // DEBUG LOG — xóa sau khi fix xong
 
-  const { username, password, full_name, phone, email } = req.body;
+  const { username, password, full_name, phone, email, id_card } = req.body;
   if (!username || !password || !full_name)
     return res.status(400).json({ message: 'Thiếu thông tin bắt buộc.' });
   if (password.length < 8)
@@ -143,7 +143,7 @@ const register = async (req, res) => {
     const existing = await db.query(
       'SELECT account_id FROM Accounts WHERE username = ?', [username]
     );
-      if (existing.length > 0)
+    if (existing.length > 0)
       return res.status(409).json({ message: 'Tên đăng nhập đã tồn tại. Vui lòng chọn tên khác.' });
 
     // Kiểm tra trùng email trong Accounts
@@ -151,14 +151,13 @@ const register = async (req, res) => {
       const emailCheckAcc = await db.query(
         'SELECT account_id FROM Accounts WHERE email = ?', [email]
       );
-          if (emailCheckAcc.length > 0)
+      if (emailCheckAcc.length > 0)
         return res.status(409).json({ message: 'Email đã được sử dụng. Vui lòng dùng email khác.' });
 
-      // Kiểm tra trùng email trong Customers
       const emailCheckCust = await db.query(
         'SELECT customer_id FROM Customers WHERE email = ?', [email]
       );
-          if (emailCheckCust.length > 0)
+      if (emailCheckCust.length > 0)
         return res.status(409).json({ message: 'Email đã được sử dụng. Vui lòng dùng email khác.' });
     }
 
@@ -167,7 +166,7 @@ const register = async (req, res) => {
       const hash    = await bcrypt.hash(password, 10);
       const custRes = await t.query(
         'INSERT INTO Customers (full_name, phone, email, id_card) VALUES (?, ?, ?, ?)',
-        [full_name, phone||null, email||null, `PENDING_${username.toUpperCase()}`]
+        [full_name, phone||null, email||null, id_card||null]
       );
       const customerId = custRes.insertId;
 
@@ -178,7 +177,7 @@ const register = async (req, res) => {
       );
 
       await t.commit();
-          res.status(201).json({
+      res.status(201).json({
         message:     'Đăng ký thành công.',
         account_id:  accRes.insertId,
         customer_id: customerId,

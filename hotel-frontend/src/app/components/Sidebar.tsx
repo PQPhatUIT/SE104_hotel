@@ -21,16 +21,15 @@ const MENU_ITEMS: MenuItem[] = [
   { path: '/customer-profile',   icon: User,            label: 'Thông tin cá nhân',     roles: ['Khách hàng'] },
 
   // Nhân viên
-  { path: '/dashboard',      icon: LayoutDashboard, label: 'Báo cáo tổng quan',    roles: ['Quản lý', 'Admin', 'Thủ kho'] },
-  { path: '/rooms',          icon: Bed,             label: 'Sơ đồ phòng',          roles: ['Lễ tân', 'Quản lý', 'Admin'] },
-  { path: '/bookings',       icon: FileText,        label: 'Lập phiếu đặt phòng',  roles: ['Lễ tân', 'Quản lý', 'Admin'] },
-  { path: '/booking-search', icon: Search,          label: 'Tra cứu phiếu đặt',    roles: ['Lễ tân', 'Quản lý', 'Admin'] },
-  { path: '/customers',      icon: Users,           label: 'Danh sách khách hàng', roles: ['Lễ tân', 'Quản lý', 'Admin'] },
-  { path: '/payments',       icon: Receipt,         label: 'Thanh toán',           roles: ['Lễ tân', 'Quản lý', 'Admin'] },
-  { path: '/warehouse',      icon: Package,         label: 'Quản lý Kho',          roles: ['Thủ kho', 'Quản lý', 'Admin'] },
-  { path: '/reports',        icon: BarChart2,       label: 'Báo cáo & Thống kê',   roles: ['Quản lý', 'Admin', 'Thủ kho'] },
-  { path: '/employees',      icon: UserCog,         label: 'Quản lý Nhân viên',    roles: ['Quản lý', 'Admin'] },
-  { path: '/system',         icon: Settings,        label: 'Cấu hình hệ thống',    roles: ['Admin'] },
+  { path: '/dashboard',      icon: LayoutDashboard, label: 'Báo cáo tổng quan',    roles: ['Quản lý'] },
+  { path: '/rooms',          icon: Bed,             label: 'Sơ đồ phòng',          roles: ['Lễ tân', 'Quản lý'] },
+  { path: '/bookings',       icon: FileText,        label: 'Lập phiếu đặt phòng',  roles: ['Lễ tân', 'Quản lý'] },
+  { path: '/booking-search', icon: Search,          label: 'Tra cứu phiếu đặt',    roles: ['Lễ tân', 'Quản lý'] },
+  { path: '/customers',      icon: Users,           label: 'Danh sách khách hàng', roles: ['Lễ tân', 'Quản lý'] },
+  { path: '/payments',       icon: Receipt,         label: 'Thanh toán',           roles: ['Lễ tân', 'Quản lý'] },
+  { path: '/warehouse',      icon: Package,         label: 'Quản lý Kho',          roles: ['Lễ tân', 'Quản lý'] },
+  { path: '/reports',        icon: BarChart2,       label: 'Báo cáo & Thống kê',   roles: ['Quản lý'] },
+  { path: '/employees',      icon: UserCog,         label: 'Quản lý Nhân viên',    roles: ['Quản lý'] },
 ];
 
 export function Sidebar() {

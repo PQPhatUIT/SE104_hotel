@@ -200,4 +200,72 @@ const getBookingById = async (req, res) => {
   }
 };
 
-module.exports = { getBookings, createBooking, checkIn, cancelBooking, getBookingById };
+const updateBookingDates = async (req, res) => {
+  const { check_out_date } = req.body;
+  const bookingId = parseInt(req.params.id, 10);
+
+  if (!check_out_date) return res.status(400).json({ message: 'Vui lòng cung cấp check_out_date mới.' });
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const newCheckout = new Date(check_out_date);
+  if (newCheckout <= today) return res.status(400).json({ message: 'Ngày trả phòng mới phải lớn hơn ngày hiện tại.' });
+
+  const t = await db.beginTransaction();
+  try {
+    const rows = await t.query(
+      `SELECT b.booking_id, b.room_id, b.customer_id, b.check_in_date, b.check_out_date,
+              b.status, c.customer_id AS cust_id
+       FROM Bookings b
+       JOIN Customers c ON b.customer_id = c.customer_id
+       WHERE b.booking_id = ?`,
+      [bookingId]
+    );
+    const booking = rows[0];
+    if (!booking) { await t.rollback(); return res.status(404).json({ message: 'Không tìm thấy booking.' }); }
+
+    // Nếu là khách hàng, chỉ được sửa booking của mình
+    if (req.user.role === 'Khách hàng') {
+      const cusRows = await t.query('SELECT customer_id FROM Customers WHERE customer_id = ?', [req.user.customer_id]);
+      if (!cusRows.length || cusRows[0].customer_id !== booking.customer_id) {
+        await t.rollback();
+        return res.status(403).json({ message: 'Bạn không có quyền sửa booking này.' });
+      }
+    }
+
+    if (!['confirmed', 'checked_in'].includes(booking.status)) {
+      await t.rollback();
+      return res.status(400).json({ message: `Không thể sửa booking ở trạng thái "${booking.status}".` });
+    }
+
+    const newCheckoutStr = check_out_date;
+    if (new Date(newCheckoutStr) <= new Date(booking.check_in_date)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Ngày trả phòng phải sau ngày nhận phòng.' });
+    }
+
+    // Kiểm tra conflict với booking khác của cùng phòng
+    const conflict = await t.query(
+      `SELECT COUNT(*) AS cnt FROM Bookings
+       WHERE room_id = ? AND booking_id != ? AND status IN ('confirmed','checked_in')
+         AND NOT (check_out_date <= ? OR check_in_date >= ?)`,
+      [booking.room_id, bookingId, booking.check_in_date, newCheckoutStr]
+    );
+    if (conflict[0]?.cnt > 0) {
+      await t.rollback();
+      return res.status(409).json({ message: 'Phòng đã có booking khác trong khoảng thời gian mới.' });
+    }
+
+    await t.query(
+      'UPDATE Bookings SET check_out_date = ?, updated_at = NOW() WHERE booking_id = ?',
+      [newCheckoutStr, bookingId]
+    );
+    await t.commit();
+    res.json({ message: 'Cập nhật ngày đặt phòng thành công.', booking_id: bookingId, check_out_date: newCheckoutStr });
+  } catch (err) {
+    await t.rollback();
+    console.error('[updateBookingDates]', err);
+    res.status(500).json({ message: 'Lỗi server.' });
+  }
+};
+
+module.exports = { getBookings, createBooking, checkIn, cancelBooking, getBookingById, updateBookingDates };

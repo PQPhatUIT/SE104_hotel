@@ -13,10 +13,10 @@ require('dotenv').config();
 
 // ── Map: role DB → role Frontend ─────────────────────────────
 const ROLE_DB_TO_FRONTEND = {
-  'admin':        'Admin',
+  'admin':        'Quản lý',
   'manager':      'Quản lý',
   'receptionist': 'Lễ tân',
-  'warehouse':    'Thủ kho',
+  'warehouse':    'Lễ tân',
   'customer':     'Khách hàng',
 };
 

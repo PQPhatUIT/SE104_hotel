@@ -35,6 +35,7 @@ export interface RegisterData {
   fullName: string;
   phone: string;
   email: string;
+  idCard?: string;
   password: string;
 }
 
@@ -164,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           full_name: data.fullName,
           phone:     data.phone,
           email:     data.email,
+          id_card:   data.idCard || null,
           password:  data.password,
         }),
       });

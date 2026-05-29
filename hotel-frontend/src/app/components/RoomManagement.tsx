@@ -249,11 +249,23 @@ export function RoomManagement() {
               {editRoom && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
-                  <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                    <option value="available">Trống</option>
-                    <option value="occupied">Đang sử dụng</option>
-                    <option value="maintenance">Bảo trì</option>
-                  </select>
+                  {editRoom.status === 'occupied' ? (
+                    <div className="space-y-2">
+                      <div className="px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                        🔴 Phòng đang có khách — không thể thay đổi thủ công
+                      </div>
+                      <p className="text-xs text-gray-400">Trạng thái sẽ tự chuyển về "Trống" khi khách check-out</p>
+                    </div>
+                  ) : (
+                    <>
+                      <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="available">Trống</option>
+                        <option value="maintenance">Bảo trì</option>
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">Chỉ có thể chuyển giữa Trống ↔ Bảo trì. Các trạng thái khác do hệ thống tự quản lý.</p>
+                    </>
+                  )}
                 </div>
               )}
             </div>

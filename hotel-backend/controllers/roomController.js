@@ -89,21 +89,42 @@ const getRoomById = async (req, res) => {
 // PATCH /api/rooms/:id/status
 const updateRoomStatus = async (req, res) => {
   const { status } = req.body;
-  const VALID = ['available', 'occupied', 'booked', 'maintenance'];
+  const roomId = parseInt(req.params.id, 10);
 
-  if (!VALID.includes(status)) {
-    return res.status(400).json({ message: `status phải là một trong: ${VALID.join(', ')}` });
+  // Quản lý chỉ được thao tác 2 chiều: available ↔ maintenance
+  if (!['available', 'maintenance'].includes(status)) {
+    return res.status(400).json({
+      message: 'Chỉ được đổi trạng thái giữa "Trống" và "Bảo trì". Các trạng thái khác được hệ thống tự động quản lý.',
+    });
   }
 
   try {
-    // ✅ SỬA: UPDATE trả về ResultSetHeader → dùng result.affectedRows, KHÔNG dùng rows.length
-    const result = await db.query(
-      `UPDATE Rooms SET status = ?, updated_at = NOW() WHERE room_id = ?`,
-      [status, parseInt(req.params.id, 10)]
-    );
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Không tìm thấy phòng.' });
+    // Kiểm tra phòng hiện tại
+    const rooms = await db.query('SELECT status FROM Rooms WHERE room_id = ?', [roomId]);
+    if (!rooms.length) return res.status(404).json({ message: 'Không tìm thấy phòng.' });
+
+    const current = rooms[0].status;
+
+    // Nếu muốn đổi sang available: phải không có booking active
+    if (status === 'available') {
+      const active = await db.query(
+        `SELECT booking_id FROM Bookings WHERE room_id = ? AND status IN ('confirmed','checked_in') LIMIT 1`,
+        [roomId]
+      );
+      if (active.length > 0) {
+        return res.status(409).json({ message: 'Không thể đổi về Trống — phòng đang có khách đặt hoặc đang ở.' });
+      }
+      if (current !== 'maintenance') {
+        return res.status(400).json({ message: `Chỉ có thể đổi từ "Bảo trì" về "Trống".` });
+      }
     }
+
+    // Nếu muốn đổi sang maintenance: phòng phải đang trống
+    if (status === 'maintenance' && current !== 'available') {
+      return res.status(400).json({ message: 'Chỉ có thể đưa vào bảo trì khi phòng đang Trống.' });
+    }
+
+    await db.query('UPDATE Rooms SET status = ?, updated_at = NOW() WHERE room_id = ?', [status, roomId]);
     res.json({ message: 'Cập nhật trạng thái phòng thành công.', room_id: req.params.id, status });
   } catch (err) {
     console.error('[roomController.updateRoomStatus]', err);
@@ -186,3 +207,5 @@ const deleteRoom = async (req, res) => {
 };
 
 module.exports = { getRooms, getAvailableRooms, getRoomById, updateRoomStatus, createRoom, getRoomTypes, deleteRoom };
+// Ghi đè updateRoomStatus với logic mới
+// (export đã có ở cuối file, cần patch trực tiếp)

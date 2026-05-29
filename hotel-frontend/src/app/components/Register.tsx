@@ -13,6 +13,7 @@ interface RegisterFormData {
   fullName:        string;
   phone:           string;
   email:           string;
+  idCard:          string;
   password:        string;
   confirmPassword: string;
 }
@@ -26,7 +27,7 @@ export function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading,           setIsLoading]           = useState(false);
   const [formData, setFormData] = useState<RegisterFormData>({
-    username: '', fullName: '', phone: '', email: '', password: '', confirmPassword: '',
+    username: '', fullName: '', phone: '', email: '', idCard: '', password: '', confirmPassword: '',
   });
   const [errors,   setErrors]   = useState<RegisterFormErrors>({});
   const [apiError, setApiError] = useState('');
@@ -40,6 +41,7 @@ export function Register() {
     if (!formData.fullName || formData.fullName.length < 3)  e.fullName = 'Họ tên phải có ít nhất 3 ký tự';
     if (!/^0\d{9}$/.test(formData.phone))                   e.phone    = 'Số điện thoại phải có 10 số và bắt đầu bằng 0';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) e.email    = 'Email không hợp lệ';
+    if (formData.idCard && !/^\d{9}(\d{3})?$/.test(formData.idCard)) e.idCard = 'CMND/CCCD phải có 9 hoặc 12 số';
     if (formData.password.length < 8)                        e.password = 'Mật khẩu phải có ít nhất 8 ký tự';
     else if (!/(?=.*[a-zA-Z])(?=.*\d)/.test(formData.password)) e.password = 'Mật khẩu phải chứa cả chữ và số';
     if (formData.password !== formData.confirmPassword)      e.confirmPassword = 'Mật khẩu xác nhận không khớp';
@@ -59,6 +61,7 @@ export function Register() {
         fullName: formData.fullName,
         phone:    formData.phone,
         email:    formData.email,
+        idCard:   formData.idCard,
         password: formData.password,
       });
 
@@ -157,6 +160,15 @@ export function Register() {
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
                 placeholder="email@example.com" autoComplete="email" />
               {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+            </div>
+
+            {/* CMND/CCCD */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">CMND/CCCD <span className="text-gray-400 font-normal text-xs">(tùy chọn)</span></label>
+              <input type="text" value={formData.idCard} onChange={(e) => handleInputChange('idCard', e.target.value)}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.idCard ? 'border-red-500' : 'border-gray-300'}`}
+                placeholder="9 hoặc 12 số" maxLength={12} />
+              {errors.idCard && <p className="text-red-500 text-xs mt-1">{errors.idCard}</p>}
             </div>
 
             {/* Mật khẩu */}
