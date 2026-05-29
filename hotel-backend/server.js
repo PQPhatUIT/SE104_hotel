@@ -79,8 +79,8 @@ app.patch ('/api/customers/:id',           verifyToken, isStaff, updateCustomer)
 app.delete('/api/customers/:id',           verifyToken, isMgr,   deleteCustomer);
 
 // ── SERVICES ──────────────────────────────────────────────────────────────────
-app.get   ('/api/services',                verifyToken, isStaff, getServices);
-app.get   ('/api/services/:id',            verifyToken, isStaff, getServiceById);
+app.get   ('/api/services',                verifyToken,          getServices);   // Khách cũng xem được
+app.get   ('/api/services/:id',            verifyToken,          getServiceById);
 app.post  ('/api/services',                verifyToken, isMgr,   createService);
 app.patch ('/api/services/:id',            verifyToken, isMgr,   updateService);
 app.patch ('/api/services/:id/stock',      verifyToken, isStaff, addStock);

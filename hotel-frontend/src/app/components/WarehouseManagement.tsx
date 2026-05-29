@@ -226,9 +226,8 @@ export function WarehouseManagement() {
                   <td className="px-4 py-4 text-sm text-gray-600">{s.unit}</td>
                   <td className="px-4 py-4 text-sm text-gray-800">{s.price.toLocaleString('vi-VN')} đ</td>
                   <td className="px-4 py-4 text-sm">
-                    {/* ✅ SỬA: hiện đúng số, không thêm số 0 */}
                     <span className={`font-bold ${s.is_low_stock ? 'text-red-600' : 'text-green-600'}`}>
-                      {s.stock_quantity}
+                      {Number(s.stock_quantity)}
                     </span>
                     {s.is_low_stock && <AlertTriangle className="w-4 h-4 inline ml-1 text-red-500" />}
                   </td>
@@ -245,6 +244,7 @@ export function WarehouseManagement() {
                       <button onClick={() => handleToggleAvailable(s)} className={`p-1.5 rounded-lg text-xs font-medium px-2 ${s.is_available ? 'text-gray-500 hover:bg-gray-100' : 'text-green-600 hover:bg-green-50'}`}>
                         {s.is_available ? 'Ngưng' : 'Bật'}
                       </button>
+                      <button onClick={() => handleDelete(s)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg" title="Xóa vật tư"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>

@@ -107,7 +107,33 @@ function AmenityIcon({ name }: { name: string }) {
 }
 
 // ── Modal chi tiết phòng ──────────────────────────────────────────────────────
+// Gallery ảnh theo loại phòng
+const GALLERY: Record<string, string[]> = {
+  Standard: [
+    'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800&q=80',
+    'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=80',
+    'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&q=80',
+    'https://images.unsplash.com/photo-1566195992011-5f6b21e539aa?w=800&q=80',
+  ],
+  Deluxe: [
+    'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&q=80',
+    'https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=800&q=80',
+    'https://images.unsplash.com/photo-1560185007-cde436f6a4d0?w=800&q=80',
+    'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=800&q=80',
+  ],
+  Suite: [
+    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&q=80',
+    'https://images.unsplash.com/photo-1591088398332-8a7791972843?w=800&q=80',
+    'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=800&q=80',
+    'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&q=80',
+  ],
+};
+
+const GALLERY_LABELS = ['Phòng ngủ', 'Phòng tắm', 'Không gian nghỉ', 'Tiện nghi'];
+
 function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: () => void; onBook: () => void }) {
+  const [imgIdx, setImgIdx] = useState(0);
+  const gallery = GALLERY[room.type] || [room.image];
   const typeColorMap: Record<RoomInfo['type'], string> = {
     Standard: 'bg-blue-100 text-blue-700',
     Deluxe:   'bg-purple-100 text-purple-700',
@@ -120,28 +146,40 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
       style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
-        {/* Ảnh lớn */}
-        <div className="relative">
-          <img
-            src={room.image}
-            alt={room.name}
-            className="w-full object-cover"
-            style={{ height: '260px' }}
-          />
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
-          >
+      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        {/* Gallery ảnh */}
+        <div className="relative flex-shrink-0">
+          <img src={gallery[imgIdx]} alt={GALLERY_LABELS[imgIdx]} className="w-full object-cover" style={{ height: '240px' }} />
+          <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center bg-black/50 rounded-full text-white hover:bg-black/70">
             <X className="w-4 h-4" />
           </button>
           <span className={`absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold ${room.available ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
             {room.available ? 'Còn trống' : 'Đã đặt'}
           </span>
+          {/* Label ảnh */}
+          <span className="absolute bottom-3 left-3 px-2.5 py-1 bg-black/50 text-white text-xs rounded-lg">{GALLERY_LABELS[imgIdx] || ''}</span>
+          {/* Nav ảnh */}
+          {gallery.length > 1 && (
+            <div className="absolute bottom-3 right-3 flex gap-1">
+              {gallery.map((_, i) => (
+                <button key={i} onClick={() => setImgIdx(i)}
+                  className={`w-2 h-2 rounded-full transition-colors ${i === imgIdx ? 'bg-white' : 'bg-white/50'}`} />
+              ))}
+            </div>
+          )}
+        </div>
+        {/* Thumbnails */}
+        <div className="flex gap-2 px-4 py-2 bg-gray-50 flex-shrink-0">
+          {gallery.map((src, i) => (
+            <button key={i} onClick={() => setImgIdx(i)}
+              className={`flex-1 rounded-lg overflow-hidden border-2 transition-colors ${i === imgIdx ? 'border-blue-500' : 'border-transparent'}`}>
+              <img src={src} alt={GALLERY_LABELS[i]} className="w-full h-14 object-cover" />
+            </button>
+          ))}
         </div>
 
         {/* Nội dung */}
-        <div className="p-6">
+        <div className="p-5 overflow-y-auto flex-1">
           <div className="flex items-start justify-between mb-3">
             <div>
               <h2 className="text-xl font-bold text-gray-800">{room.name}</h2>

@@ -23,13 +23,22 @@ function formatDate(d: string) { return d ? new Date(d).toLocaleDateString('vi-V
 
 // ── Modal đổi ngày ────────────────────────────────────────────────────────────
 function ModalDoiNgay({ booking, token, onClose, onDone }: { booking: any; token: string; onClose: () => void; onDone: () => void }) {
-  const today    = new Date().toISOString().split('T')[0];
-  const [newCheckout, setNewCheckout] = useState(booking.check_out_date?.split('T')[0] || '');
+  const today       = new Date().toISOString().split('T')[0];
+  const origCheckout = booking.check_out_date?.split('T')[0] || '';
+  const [newCheckout, setNewCheckout] = useState(origCheckout);
   const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<any>(null);
+
+  const origDate    = new Date(origCheckout);
+  const newDate     = newCheckout ? new Date(newCheckout) : null;
+  const extraDays   = newDate ? Math.ceil((newDate.getTime() - origDate.getTime()) / 86400000) : 0;
+  const extraCharge = extraDays > 0 ? extraDays * Number(booking.price_per_night || 0) : 0;
+  const isShorter   = newDate && newDate < origDate;
 
   const handle = async () => {
     if (!newCheckout) { toast.error('Vui lòng chọn ngày trả phòng mới'); return; }
     if (newCheckout <= today) { toast.error('Ngày trả phòng phải sau ngày hôm nay'); return; }
+    if (isShorter) { toast.error('Không thể rút ngắn ngày ở. Chỉ được gia hạn thêm.'); return; }
     setSaving(true);
     try {
       const res  = await fetch(`${API_BASE}/api/customer/bookings/${booking.booking_id}/dates`, {
@@ -38,49 +47,70 @@ function ModalDoiNgay({ booking, token, onClose, onDone }: { booking: any; token
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      toast.success('Đổi ngày thành công!');
-      onDone();
+      setResult(data);
+      toast.success(data.message);
     } catch (err: any) { toast.error(err.message || 'Lỗi đổi ngày'); }
     finally { setSaving(false); }
   };
 
-  const nights = newCheckout && booking.check_in_date
-    ? Math.max(0, Math.ceil((new Date(newCheckout).getTime() - new Date(booking.check_in_date).getTime()) / 86400000))
-    : 0;
-  const newTotal = nights * Number(booking.price_per_night || 0);
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) { result ? onDone() : onClose(); } }}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="text-lg font-bold text-gray-800">Thay đổi ngày trả phòng</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+          <h2 className="text-lg font-bold text-gray-800">Gia hạn ngày trả phòng</h2>
+          <button onClick={() => result ? onDone() : onClose()} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-5 space-y-4">
           <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
             <p><span className="text-gray-500">Phòng:</span> <span className="font-medium">{booking.room_number} ({booking.room_type})</span></p>
             <p><span className="text-gray-500">Nhận phòng:</span> <span className="font-medium">{formatDate(booking.check_in_date)}</span></p>
             <p><span className="text-gray-500">Trả phòng hiện tại:</span> <span className="font-medium">{formatDate(booking.check_out_date)}</span></p>
+            <p><span className="text-gray-500">Giá/đêm:</span> <span className="font-medium">{Number(booking.price_per_night || 0).toLocaleString('vi-VN')} đ</span></p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Ngày trả phòng mới <span className="text-red-500">*</span></label>
-            <input type="date" value={newCheckout} min={today} onChange={(e) => setNewCheckout(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
-            <p className="text-xs text-gray-400 mt-1">Phải lớn hơn ngày hiện tại ({new Date().toLocaleDateString('vi-VN')})</p>
-          </div>
-          {nights > 0 && (
-            <div className="bg-blue-50 rounded-lg p-3 text-sm">
-              <p><span className="text-gray-600">Số đêm mới:</span> <span className="font-bold">{nights} đêm</span></p>
-              <p><span className="text-gray-600">Tiền phòng ước tính:</span> <span className="font-bold text-blue-600">{newTotal.toLocaleString('vi-VN')} đ</span></p>
+          {!result ? (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Ngày trả phòng mới <span className="text-red-500">*</span></label>
+                <input type="date" value={newCheckout} min={origCheckout} onChange={(e) => setNewCheckout(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <p className="text-xs text-gray-400 mt-1">Chỉ được gia hạn thêm, không thể rút ngắn</p>
+              </div>
+              {isShorter && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                  ❌ Không thể rút ngắn trước ngày {formatDate(origCheckout)}
+                </div>
+              )}
+              {extraDays > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
+                  <p className="font-semibold text-orange-800 mb-1">⚠️ Phụ thu gia hạn</p>
+                  <p><span className="text-gray-600">Gia hạn thêm:</span> <span className="font-bold">{extraDays} đêm</span></p>
+                  <p><span className="text-gray-600">Phụ thu:</span> <span className="font-bold text-orange-700">{extraCharge.toLocaleString('vi-VN')} đ</span></p>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm">
+              <p className="font-bold text-green-800 mb-2">✅ Gia hạn thành công!</p>
+              <p><span className="text-gray-600">Ngày mới:</span> <span className="font-bold">{formatDate(result.check_out_date)}</span></p>
+              {result.extra_days > 0 && (
+                <p><span className="text-gray-600">Phụ thu:</span> <span className="font-bold text-orange-600">{Number(result.extra_charge).toLocaleString('vi-VN')} đ</span></p>
+              )}
+              <p className="text-xs text-gray-400 mt-1">Vui lòng thanh toán phụ thu tại quầy lễ tân</p>
             </div>
           )}
         </div>
         <div className="flex gap-3 p-5 border-t">
-          <button onClick={onClose} className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Huỷ</button>
-          <button onClick={handle} disabled={saving}
-            className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-60">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Lưu thay đổi
-          </button>
+          {!result ? (
+            <>
+              <button onClick={onClose} className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Huỷ</button>
+              <button onClick={handle} disabled={saving || !!isShorter || newCheckout === origCheckout}
+                className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-60">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Xác nhận gia hạn
+              </button>
+            </>
+          ) : (
+            <button onClick={onDone} className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Đóng</button>
+          )}
         </div>
       </div>
     </div>
