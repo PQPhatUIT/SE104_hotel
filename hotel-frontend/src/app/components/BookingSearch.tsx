@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Search, FileText, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { toast } from 'sonner';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -28,6 +29,10 @@ export function BookingSearch() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const handleSearch = async () => {
+    if (!keyword.trim() && !status) {
+      toast.error('Vui lòng nhập tên khách hàng hoặc chọn trạng thái để tìm kiếm');
+      return;
+    }
     setLoading(true);
     setSearched(true);
     try {

@@ -30,6 +30,10 @@ export function CustomerManagement() {
 
   const fetchCustomers = useCallback(async (keyword = '') => {
     if (!token) return;
+    if (!keyword.trim()) {
+      setCustomers([]);
+      return;
+    }
     setIsLoading(true);
     try {
       const params = keyword ? `?keyword=${encodeURIComponent(keyword)}` : '';
@@ -140,7 +144,10 @@ export function CustomerManagement() {
             <Loader2 className="w-6 h-6 animate-spin" /> Đang tải...
           </div>
         ) : customers.length === 0 ? (
-          <div className="text-center py-16 text-gray-500">Không có dữ liệu khách hàng</div>
+          <div className="text-center py-16 text-gray-500">
+            <Search className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p>{searchQuery ? 'Không tìm thấy khách hàng phù hợp' : 'Nhập tên, SĐT hoặc CMND để tìm kiếm khách hàng'}</p>
+          </div>
         ) : (
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">

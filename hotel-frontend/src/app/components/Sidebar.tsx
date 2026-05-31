@@ -53,7 +53,7 @@ export function Sidebar() {
         <nav className="flex-1 p-4 overflow-y-auto">
           <ul className="space-y-2">
             <li>
-              <Link to="/explore-rooms" className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${location.pathname === '/explore-rooms' ? 'bg-blue-700 text-white' : 'text-blue-100 hover:bg-blue-800'}`}>
+              <Link to="/explore-rooms" className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${location.pathname === '/explore-rooms' ? 'bg-white text-blue-900 font-semibold shadow' : 'text-white hover:bg-blue-700'}`}>
                 <Bed className="w-5 h-5" /><span className="text-sm">Xem phòng</span>
               </Link>
             </li>
@@ -88,7 +88,7 @@ export function Sidebar() {
             const isActive = location.pathname === item.path;
             return (
               <li key={item.path}>
-                <Link to={item.path} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive ? 'bg-blue-700 text-white' : 'text-blue-100 hover:bg-blue-800'}`}>
+                <Link to={item.path} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive ? 'bg-white text-blue-900 font-semibold shadow' : 'text-white hover:bg-blue-700'}`}>
                   <Icon className="w-5 h-5" /><span className="text-sm">{item.label}</span>
                 </Link>
               </li>

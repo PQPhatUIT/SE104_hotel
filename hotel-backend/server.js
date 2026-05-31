@@ -85,6 +85,7 @@ app.post  ('/api/services',                verifyToken, isMgr,   createService);
 app.patch ('/api/services/:id',            verifyToken, isMgr,   updateService);
 app.patch ('/api/services/:id/stock',      verifyToken, isStaff, addStock);
 app.delete('/api/services/:id',            verifyToken, isMgr,   deleteService);
+app.post  ('/api/staff/services/order',    verifyToken, isStaff, staffOrderService);
 
 // ── REPORTS ───────────────────────────────────────────────────────────────────
 app.get('/api/reports/revenue',            verifyToken, isMgr,   getRevenueReport);
@@ -219,6 +220,74 @@ async function orderService(req, res) {
   } catch (err) {
     await t.rollback();
     console.error('[orderService]', err);
+    res.status(500).json({ message: 'Lỗi server.' });
+  }
+}
+// staffOrderService — Nhân viên order dịch vụ thay cho khách (theo booking_id)
+async function staffOrderService(req, res) {
+  const db = require('./config/db');
+  const { booking_id, service_id, quantity = 1 } = req.body;
+
+  if (!booking_id || !service_id) return res.status(400).json({ message: 'Thiếu booking_id hoặc service_id.' });
+
+  const qty = Math.max(1, parseInt(quantity, 10));
+  const t   = await db.beginTransaction();
+  try {
+    // 1. Kiểm tra booking tồn tại & đang checked_in
+    const bookings = await t.query('SELECT * FROM Bookings WHERE booking_id = ?', [booking_id]);
+    if (!bookings.length) return res.status(404).json({ message: 'Không tìm thấy phiếu đặt phòng.' });
+    const booking = bookings[0];
+    if (booking.status !== 'checked_in') {
+      await t.rollback();
+      return res.status(403).json({ message: 'Chỉ order được khi khách đang ở trong phòng (checked_in).' });
+    }
+
+    // 2. Kiểm tra dịch vụ/vật tư
+    const svcs = await t.query('SELECT * FROM Services WHERE service_id = ? AND is_available = 1', [service_id]);
+    if (!svcs.length) { await t.rollback(); return res.status(404).json({ message: 'Dịch vụ không tồn tại hoặc đã ngừng.' }); }
+    const svc = svcs[0];
+
+    // 3. Kiểm tra tồn kho (với vật tư tính đơn vị, không phải Lượt)
+    if (svc.unit !== 'Lượt' && svc.stock_quantity < qty) {
+      await t.rollback();
+      return res.status(409).json({ message: `Tồn kho không đủ. Hiện có: ${svc.stock_quantity} ${svc.unit}.` });
+    }
+
+    const subtotal = Number(svc.price) * qty;
+
+    // 4. Trừ tồn kho
+    if (svc.unit !== 'Lượt') {
+      await t.query('UPDATE Services SET stock_quantity = stock_quantity - ? WHERE service_id = ?', [qty, service_id]);
+    }
+
+    // 5. Ghi vào hóa đơn
+    const invRows = await t.query('SELECT invoice_id FROM Invoices WHERE booking_id = ?', [booking_id]);
+    if (invRows.length) {
+      const invoiceId = invRows[0].invoice_id;
+      await t.query(
+        'INSERT INTO Invoice_Details (invoice_id, service_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)',
+        [invoiceId, service_id, qty, svc.price, subtotal]
+      );
+      await t.query(
+        'UPDATE Invoices SET service_charge = service_charge + ?, total_amount = total_amount + ? WHERE invoice_id = ?',
+        [subtotal, subtotal, invoiceId]
+      );
+    } else {
+      const newInv = await t.query(
+        "INSERT INTO Invoices (booking_id, payment_method, room_charge, service_charge, total_amount, amount_paid, change_amount) VALUES (?, 'cash', 0, ?, ?, 0, 0)",
+        [booking_id, subtotal, subtotal]
+      );
+      await t.query(
+        'INSERT INTO Invoice_Details (invoice_id, service_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)',
+        [newInv.insertId, service_id, qty, svc.price, subtotal]
+      );
+    }
+
+    await t.commit();
+    res.json({ message: `Đặt "${svc.service_name}" x${qty} thành công!`, booking_id, service_name: svc.service_name, quantity: qty, unit_price: svc.price, subtotal });
+  } catch (err) {
+    await t.rollback();
+    console.error('[staffOrderService]', err);
     res.status(500).json({ message: 'Lỗi server.' });
   }
 }

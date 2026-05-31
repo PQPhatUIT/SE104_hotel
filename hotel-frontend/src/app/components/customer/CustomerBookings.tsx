@@ -321,6 +321,7 @@ function TabHistory({ bookings }: { bookings: any[] }) {
   const { token } = useAuth();
   const [invoices, setInvoices]     = useState<any[]>([]);
   const [invDetails, setInvDetails] = useState<Record<number, any[]>>({});
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [loadingInv, setLoadingInv] = useState(false);
 
   useEffect(() => {
@@ -329,7 +330,6 @@ function TabHistory({ bookings }: { bookings: any[] }) {
     fetch(`${API_BASE}/api/customer/my-invoices`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => {
-        // FIX: BE trả về array trực tiếp
         const list = Array.isArray(d) ? d : (d?.invoices ?? []);
         setInvoices(list);
       })
@@ -337,18 +337,24 @@ function TabHistory({ bookings }: { bookings: any[] }) {
       .finally(() => setLoadingInv(false));
   }, [tab, token]);
 
-  // Load Invoice_Details cho từng hóa đơn
-  const loadDetails = async (invoiceId: number) => {
-    if (invDetails[invoiceId]) return; // đã load
+  // Load Invoice_Details khi expand
+  const toggleExpand = async (invoiceId: number) => {
+    if (expandedId === invoiceId) { setExpandedId(null); return; }
+    setExpandedId(invoiceId);
+    if (invDetails[invoiceId] !== undefined) return;
     try {
-      const res  = await fetch(`${API_BASE}/api/invoices/${invoiceId}/details`, {
+      const res = await fetch(`${API_BASE}/api/invoices/${invoiceId}/details`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        const d = await res.json();
-        setInvDetails(prev => ({ ...prev, [invoiceId]: Array.isArray(d) ? d : [] }));
-      }
-    } catch { setInvDetails(prev => ({ ...prev, [invoiceId]: [] })); }
+      const d = await res.json();
+      setInvDetails(prev => ({ ...prev, [invoiceId]: Array.isArray(d) ? d : [] }));
+    } catch {
+      setInvDetails(prev => ({ ...prev, [invoiceId]: [] }));
+    }
+  };
+
+  const PAYMENT_LABEL: Record<string, string> = {
+    cash: 'Tiền mặt', card: 'Thẻ ngân hàng', transfer: 'Chuyển khoản',
   };
 
   const doneBookings = bookings.filter(b => ['checked_out','cancelled'].includes(b.status));
@@ -388,62 +394,133 @@ function TabHistory({ bookings }: { bookings: any[] }) {
       )}
 
       {tab === 'invoices' && (
-        loadingInv ? <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div> :
-        invoices.length === 0 ? <p className="text-center py-12 text-gray-400">Chưa có hóa đơn nào</p> :
-        <div className="space-y-4">
-          {invoices.map((inv: any) => {
-            const details = invDetails[inv.invoice_id];
-            return (
-              <div key={inv.invoice_id} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="font-bold text-gray-800">Hóa đơn #{inv.invoice_id}</p>
-                    <p className="text-xs text-gray-400">Phòng {inv.room_number} ({inv.room_type}) · Booking #{inv.booking_id}</p>
-                  </div>
-                  <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">Đã thanh toán</span>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Tiền phòng</span>
-                    <span>{fmtMoney(Number(inv.room_charge))}</span>
-                  </div>
-                  {Number(inv.service_charge) > 0 && (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Tiền dịch vụ</span>
-                        <span>{fmtMoney(Number(inv.service_charge))}</span>
-                      </div>
-                      {/* Chi tiết dịch vụ */}
-                      {!details ? (
-                        <button onClick={() => loadDetails(inv.invoice_id)}
-                          className="text-xs text-blue-500 hover:underline ml-4">Xem chi tiết dịch vụ ▼</button>
-                      ) : details.length > 0 ? (
-                        <div className="ml-4 space-y-1">
-                          {details.map((d: any, i: number) => (
-                            <div key={i} className="flex justify-between text-xs text-gray-500">
-                              <span>· {d.service_name} x{d.quantity}</span>
-                              <span>{fmtMoney(Number(d.subtotal))}</span>
-                            </div>
-                          ))}
+        loadingInv
+          ? <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
+          : invoices.length === 0
+            ? <p className="text-center py-12 text-gray-400">Chưa có hóa đơn nào</p>
+            : <div className="space-y-4">
+                {invoices.map((inv: any) => {
+                  const nights = Math.max(1, Math.ceil(
+                    (new Date(inv.check_out_date).getTime() - new Date(inv.check_in_date).getTime()) / 86400000
+                  ));
+                  const isExpanded = expandedId === inv.invoice_id;
+                  const details    = invDetails[inv.invoice_id];
+
+                  return (
+                    <div key={inv.invoice_id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                      {/* Header hóa đơn */}
+                      <div className="flex items-center justify-between px-5 py-4 bg-gray-50 border-b border-gray-100">
+                        <div>
+                          <p className="font-bold text-gray-800">Hóa đơn #{inv.invoice_id}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">Booking #{inv.booking_id} · Phòng {inv.room_number} ({inv.room_type})</p>
                         </div>
-                      ) : null}
-                    </>
-                  )}
-                  {Number(inv.deposit) > 0 && (
-                    <div className="flex justify-between text-orange-600">
-                      <span>Tiền cọc đã đặt</span>
-                      <span>- {fmtMoney(Number(inv.deposit))}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">Đã thanh toán</span>
+                          <button onClick={() => toggleExpand(inv.invoice_id)}
+                            className="text-xs text-blue-500 hover:text-blue-700 font-medium">
+                            {isExpanded ? 'Thu gọn ▲' : 'Chi tiết ▼'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Thông tin cơ bản — luôn hiển thị */}
+                      <div className="px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Ngày đặt phòng</span>
+                          <span className="font-medium">{formatDate(inv.booking_created_at)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Ngày thanh toán</span>
+                          <span className="font-medium">{formatDate(inv.payment_date)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Nhận phòng</span>
+                          <span className="font-medium">{formatDate(inv.check_in_date)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Trả phòng</span>
+                          <span className="font-medium">{formatDate(inv.check_out_date)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Số đêm</span>
+                          <span className="font-medium">{nights} đêm</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Hình thức TT</span>
+                          <span className="font-medium">{PAYMENT_LABEL[inv.payment_method] || inv.payment_method}</span>
+                        </div>
+                      </div>
+
+                      {/* Chi tiết tài chính — mở rộng */}
+                      {isExpanded && (
+                        <div className="px-5 pb-4 space-y-3">
+                          <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+                            <p className="font-semibold text-gray-700 mb-2">Chi tiết thanh toán</p>
+
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Tiền phòng ({nights} đêm × {fmtMoney(Number(inv.price_per_night))})</span>
+                              <span>{fmtMoney(Number(inv.room_charge))}</span>
+                            </div>
+
+                            {Number(inv.service_charge) > 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Tiền dịch vụ / vật tư</span>
+                                <span>{fmtMoney(Number(inv.service_charge))}</span>
+                              </div>
+                            )}
+
+                            {/* Danh sách vật tư đã order */}
+                            {details === undefined && Number(inv.service_charge) > 0 && (
+                              <p className="text-xs text-gray-400 ml-4 italic">Đang tải chi tiết dịch vụ...</p>
+                            )}
+                            {details && details.length > 0 && (
+                              <div className="ml-4 border-l-2 border-blue-100 pl-3 space-y-1">
+                                <p className="text-xs font-medium text-gray-500 mb-1">Vật tư / Dịch vụ đã dùng:</p>
+                                {details.map((d: any, i: number) => (
+                                  <div key={i} className="flex justify-between text-xs text-gray-500">
+                                    <span>· {d.service_name} × {d.quantity} {d.unit}</span>
+                                    <span>{fmtMoney(Number(d.subtotal))}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {details && details.length === 0 && Number(inv.service_charge) > 0 && (
+                              <p className="text-xs text-gray-400 ml-4 italic">Không có chi tiết dịch vụ</p>
+                            )}
+
+                            {Number(inv.deposit_amount) > 0 && (
+                              <div className="flex justify-between text-orange-600">
+                                <span>Tiền đặt cọc (đã trừ)</span>
+                                <span>- {fmtMoney(Number(inv.deposit_amount))}</span>
+                              </div>
+                            )}
+
+                            <div className="flex justify-between font-bold text-base pt-2 border-t border-gray-200">
+                              <span>Tổng thanh toán</span>
+                              <span className="text-blue-600">{fmtMoney(Number(inv.total_amount))}</span>
+                            </div>
+
+                            {Number(inv.amount_paid) > 0 && (
+                              <>
+                                <div className="flex justify-between text-gray-500 text-xs">
+                                  <span>Khách đưa</span>
+                                  <span>{fmtMoney(Number(inv.amount_paid))}</span>
+                                </div>
+                                {Number(inv.change_amount) > 0 && (
+                                  <div className="flex justify-between text-green-600 text-xs">
+                                    <span>Tiền thừa trả lại</span>
+                                    <span>{fmtMoney(Number(inv.change_amount))}</span>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  <div className="flex justify-between font-bold pt-1.5 border-t border-gray-200 text-base">
-                    <span>Tổng thanh toán</span>
-                    <span className="text-blue-600">{fmtMoney(Number(inv.total_amount))}</span>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
       )}
     </div>
   );

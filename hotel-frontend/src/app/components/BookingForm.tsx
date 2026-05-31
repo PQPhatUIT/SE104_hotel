@@ -1,6 +1,6 @@
 // BookingForm.tsx — Thêm tab "Danh sách booking" với nút Check-in
 import { useState, useEffect } from 'react';
-import { Search, Plus, Calendar, FileText, Loader2, LogIn, XCircle, RefreshCw } from 'lucide-react';
+import { Search, Plus, Calendar, FileText, Loader2, LogIn, XCircle, RefreshCw, Package, Minus, ShoppingCart, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 
@@ -24,6 +24,7 @@ const fmtMoney = (n: number) =>
 
 export function BookingForm() {
   const { token } = useAuth();
+  const headers = { Authorization: `Bearer ${token}` };
   const [activeTab, setActiveTab] = useState<'create' | 'list'>('create');
 
   // ── State tạo phiếu ──────────────────────────────────────────────────────
@@ -46,7 +47,12 @@ export function BookingForm() {
   const [loadingList, setLoadingList]   = useState(false);
   const [actionLoadId, setActionLoadId] = useState<number | null>(null);
 
-  const headers = { Authorization: `Bearer ${token}` };
+  // ── State order dịch vụ cho nhân viên ───────────────────────────────────
+  const [serviceModalBooking, setServiceModalBooking] = useState<any | null>(null);
+  const [services, setServices]         = useState<any[]>([]);
+  const [svcLoading, setSvcLoading]     = useState(false);
+  const [svcQty, setSvcQty]             = useState<Record<number, number>>({});
+  const [ordering, setOrdering]         = useState<number | null>(null);
 
   // ── Load room types ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -83,6 +89,66 @@ export function BookingForm() {
   useEffect(() => {
     if (activeTab === 'list') loadBookings();
   }, [activeTab]);
+
+  // ── Mở modal order dịch vụ cho nhân viên ────────────────────────────────
+  const openServiceModal = async (booking: any) => {
+    setServiceModalBooking(booking);
+    setServices([]);
+    setSvcQty({});
+    setSvcLoading(true);
+    try {
+      const res  = await fetch(`${API_BASE}/api/services`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      // API có thể trả về array trực tiếp hoặc { services: [] }
+      const raw  = Array.isArray(data) ? data
+                 : Array.isArray(data?.services) ? data.services
+                 : [];
+      // Lọc is_available (MySQL trả số 0/1, dùng != 0)
+      const list = raw.filter((s: any) => s.is_available != 0);
+      setServices(list);
+      const initQty: Record<number, number> = {};
+      list.forEach((s: any) => { initQty[s.service_id] = 1; });
+      setSvcQty(initQty);
+    } catch (err) {
+      console.error('openServiceModal error:', err);
+      toast.error('Không thể tải danh sách dịch vụ');
+    } finally {
+      setSvcLoading(false);
+    }
+  };
+
+  const handleStaffOrder = async (service: any) => {
+    if (!serviceModalBooking) return;
+    const qty = svcQty[service.service_id] || 1;
+    if (service.unit !== 'Lượt' && qty > service.stock_quantity) {
+      toast.error(`Tồn kho không đủ. Hiện có: ${service.stock_quantity} ${service.unit}`);
+      return;
+    }
+    setOrdering(service.service_id);
+    try {
+      const res  = await fetch(`${API_BASE}/api/staff/services/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          booking_id: serviceModalBooking.booking_id,
+          service_id: service.service_id,
+          quantity: qty,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      toast.success(`Đặt "${service.service_name}" x${qty} thành công!`);
+      setServices(prev => prev.map(s =>
+        s.service_id === service.service_id && s.unit !== 'Lượt'
+          ? { ...s, stock_quantity: s.stock_quantity - qty }
+          : s
+      ).filter(s => s.unit === 'Lượt' || s.stock_quantity > 0));
+      setSvcQty(prev => ({ ...prev, [service.service_id]: 1 }));
+    } catch (err: any) { toast.error(err.message || 'Lỗi đặt dịch vụ'); }
+    finally { setOrdering(null); }
+  };
 
   // ── Tra cứu khách hàng ───────────────────────────────────────────────────
   const handleSearchCustomer = async () => {
@@ -189,6 +255,7 @@ export function BookingForm() {
   };
 
   return (
+    <>
     <div className="p-8">
       <div className="flex items-center gap-3 mb-6">
         <FileText className="w-8 h-8 text-blue-600" />
@@ -427,6 +494,16 @@ export function BookingForm() {
                         </td>
                         <td className="px-5 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
+                            {/* Nút ORDER DỊCH VỤ — chỉ hiện khi checked_in */}
+                            {b.status === 'checked_in' && (
+                              <button
+                                onClick={() => openServiceModal(b)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 text-xs rounded-lg hover:bg-blue-100 transition-colors"
+                              >
+                                <Package className="w-3.5 h-3.5" />
+                                Dịch vụ
+                              </button>
+                            )}
                             {/* Nút CHECK-IN — chỉ hiện khi status = confirmed */}
                             {b.status === 'confirmed' && (
                               <button
@@ -465,5 +542,95 @@ export function BookingForm() {
         </div>
       )}
     </div>
+
+    {/* ── Modal Order Dịch Vụ cho Nhân Viên ──────────────────────────────── */}
+    {serviceModalBooking && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        onClick={e => { if (e.target === e.currentTarget) setServiceModalBooking(null); }}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+          <div className="flex items-center justify-between p-5 border-b">
+            <div>
+              <h2 className="text-lg font-bold text-gray-800">Order dịch vụ / vật tư</h2>
+              <p className="text-sm text-gray-500">
+                Phòng {serviceModalBooking.room_number} · Booking #{serviceModalBooking.booking_id} · {serviceModalBooking.customer_name}
+              </p>
+            </div>
+            <button onClick={() => setServiceModalBooking(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5 space-y-3">
+            {svcLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
+            ) : services.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <Package className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                <p>Không có dịch vụ/vật tư nào đang hoạt động</p>
+                <p className="text-xs mt-1 text-gray-300">Kiểm tra lại mục Quản lý Kho</p>
+              </div>
+            ) : services.map((s: any) => {
+              const qty    = svcQty[s.service_id] || 1;
+              const maxQty = s.unit === 'Lượt' ? 99 : s.stock_quantity;
+              const subtot = Number(s.price) * qty;
+              const isOut  = s.unit !== 'Lượt' && s.stock_quantity <= 0;
+              return (
+                <div key={s.service_id} className={`border rounded-xl p-4 ${isOut ? 'border-gray-100 opacity-50' : 'border-gray-200'}`}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="font-medium text-gray-800">{s.service_name}</p>
+                      <p className="text-sm text-gray-500">
+                        {Number(s.price).toLocaleString('vi-VN')}đ / {s.unit}
+                        {s.unit !== 'Lượt' && (
+                          <span className={`ml-2 font-medium ${s.stock_quantity <= 5 ? 'text-orange-500' : 'text-green-600'}`}>
+                            · Còn {s.stock_quantity} {s.unit}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  {!isOut && (
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                        <button onClick={() => setSvcQty(prev => ({ ...prev, [s.service_id]: Math.max(1, qty - 1) }))}
+                          className="px-3 py-1.5 hover:bg-gray-100 text-gray-600">
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <input type="number" value={qty} min={1} max={maxQty}
+                          onChange={e => setSvcQty(prev => ({ ...prev, [s.service_id]: Math.min(maxQty, Math.max(1, parseInt(e.target.value) || 1)) }))}
+                          className="w-14 text-center py-1.5 border-x border-gray-300 text-sm font-medium focus:outline-none" />
+                        <button onClick={() => setSvcQty(prev => ({ ...prev, [s.service_id]: Math.min(maxQty, qty + 1) }))}
+                          className="px-3 py-1.5 hover:bg-gray-100 text-gray-600">
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <span className="font-semibold text-blue-600 flex-1 text-sm">
+                        {subtot.toLocaleString('vi-VN')}đ
+                      </span>
+                      <button onClick={() => handleStaffOrder(s)} disabled={ordering === s.service_id}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-60">
+                        {ordering === s.service_id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <ShoppingCart className="w-3.5 h-3.5" />}
+                        Order
+                      </button>
+                    </div>
+                  )}
+                  {isOut && <p className="text-xs text-red-400 italic">Hết hàng</p>}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-gray-100 p-4 flex justify-end">
+            <button onClick={() => setServiceModalBooking(null)}
+              className="px-5 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+              Đóng
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

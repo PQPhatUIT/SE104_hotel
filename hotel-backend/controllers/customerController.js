@@ -85,9 +85,13 @@ const getMyInvoices = async (req, res) => {
          i.created_at       AS payment_date,
          b.check_in_date,
          b.check_out_date,
+         b.deposit_amount,
+         b.actual_guests,
+         b.created_at       AS booking_created_at,
          b.status           AS booking_status,
          r.room_number,
-         rt.type_name       AS room_type
+         rt.type_name       AS room_type,
+         rt.base_price      AS price_per_night
        FROM Invoices i
        JOIN Bookings   b  ON i.booking_id   = b.booking_id
        JOIN Rooms      r  ON b.room_id      = r.room_id

@@ -77,9 +77,9 @@ export function ReportPage() {
   };
 
   const TAB_CONFIG = [
-    { key: 'revenue',    label: 'BM 6.1 — Doanh thu',          icon: TrendingUp },
-    { key: 'room-usage', label: 'BM 6.2 — Mật độ sử dụng phòng', icon: Bed       },
-    { key: 'service',    label: 'BM 6.3 — Tình trạng dịch vụ', icon: Package    },
+    { key: 'revenue',    label: 'Doanh thu',          icon: TrendingUp },
+    { key: 'room-usage', label: 'Mật độ sử dụng phòng', icon: Bed       },
+    { key: 'service',    label: 'Tình trạng dịch vụ', icon: Package    },
   ] as const;
 
   return (

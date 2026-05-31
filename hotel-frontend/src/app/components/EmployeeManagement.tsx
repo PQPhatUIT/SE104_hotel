@@ -17,7 +17,7 @@ interface Account {
   createdAt: string;
 }
 
-const roleOptions: UserRole[] = ['Khách hàng', 'Lễ tân', 'Quản lý', 'Thủ kho', 'Admin'];
+const roleOptions: UserRole[] = ['Khách hàng', 'Lễ tân', 'Quản lý'];
 const emptyForm = { username: '', fullName: '', phone: '', email: '', password: '', role: 'Lễ tân' as UserRole };
 
 export function EmployeeManagement() {
@@ -114,7 +114,9 @@ export function EmployeeManagement() {
           <Shield className="w-5 h-5 text-gray-500" />
           <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
             <option value="all">Tất cả vai trò</option>
-            {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
+            <option value="Khách hàng">Khách hàng</option>
+            <option value="Lễ tân">Lễ tân</option>
+            <option value="Quản lý">Quản lý</option>
           </select>
           <div className="flex-1" />
           <p className="text-sm text-gray-600">Tổng: <span className="font-semibold">{filtered.length}</span> tài khoản</p>
