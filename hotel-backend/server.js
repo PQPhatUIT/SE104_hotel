@@ -46,10 +46,12 @@ app.get  ('/api/customer/my-invoices',     verifyToken, getMyInvoices);
 app.post ('/api/customer/bookings',        verifyToken, requireRole('Khách hàng'), createBooking);
 // Khách hàng đổi ngày
 app.patch('/api/customer/bookings/:id/dates', verifyToken, requireRole('Khách hàng'), updateBookingDates);
+// Khách hàng xem danh sách dịch vụ (để order) — FIX: route riêng cho khách, không dùng chung isStaff
+app.get  ('/api/customer/services',        verifyToken, requireRole('Khách hàng'), getServices);
 // Khách hàng order dịch vụ (chỉ khi checked_in)
 app.post ('/api/customer/services/order',  verifyToken, requireRole('Khách hàng'), orderService);
 
-// ── MIDDLEWARE SHORTCUTS (3 roles) ────────────────────────────────────────────
+// ── MIDDLEWARE SHORTCUTS ───────────────────────────────────────────────────────
 const isMgr   = requireRole('Quản lý');
 const isStaff = requireRole('Quản lý', 'Lễ tân');
 
@@ -81,7 +83,7 @@ app.delete('/api/customers/:id',           verifyToken, isMgr,   deleteCustomer)
 // ── SERVICES ──────────────────────────────────────────────────────────────────
 app.get   ('/api/services',                verifyToken, isStaff, getServices);
 app.get   ('/api/services/:id',            verifyToken, isStaff, getServiceById);
-app.post  ('/api/services',                verifyToken, isMgr,   createService);
+app.post  ('/api/services',               verifyToken, isMgr,   createService);
 app.patch ('/api/services/:id',            verifyToken, isMgr,   updateService);
 app.patch ('/api/services/:id/stock',      verifyToken, isStaff, addStock);
 app.delete('/api/services/:id',            verifyToken, isMgr,   deleteService);
@@ -99,19 +101,19 @@ app.patch('/api/accounts/:id/role',        verifyToken, isMgr,   updateRole);
 app.patch('/api/accounts/:id/status',      verifyToken, isMgr,   updateStatus);
 app.patch('/api/accounts/:id/password',    verifyToken, isMgr,   resetPassword);
 
-// GET /api/invoices/:id/details — chi tiết dịch vụ trong hóa đơn (khách xem)
+// ── GET /api/invoices/:id/details — chi tiết dịch vụ trong hóa đơn ───────────
 app.get('/api/invoices/:id/details', verifyToken, async (req, res) => {
   const db = require('./config/db');
   try {
     const rows = await db.query(
       `SELECT id.detail_id, id.quantity, id.unit_price, id.subtotal,
               s.service_name, s.unit
-       FROM Invoice_Details id
+       FROM invoice_details id
        JOIN Services s ON id.service_id = s.service_id
        WHERE id.invoice_id = ?`,
       [parseInt(req.params.id, 10)]
     );
-    // Kiểm tra hóa đơn có thuộc về khách đang đăng nhập không (nếu role=customer)
+    // Nếu là khách hàng: kiểm tra hóa đơn có thuộc về họ không
     if (req.user.role === 'Khách hàng') {
       const check = await db.query(
         `SELECT i.invoice_id FROM Invoices i
@@ -136,7 +138,7 @@ app.use((err, _req, res, _next) => { console.error(err); res.status(500).json({ 
 
 app.listen(PORT, () => console.log(`🚀 Server: http://localhost:${PORT}`));
 
-// orderService — hỗ trợ số lượng, lưu Invoice_Details, cập nhật service_charge hóa đơn
+// ── orderService — Khách hàng tự order dịch vụ (chỉ khi checked_in) ──────────
 async function orderService(req, res) {
   const db = require('./config/db');
   const { service_id, quantity = 1 } = req.body;
@@ -181,10 +183,10 @@ async function orderService(req, res) {
     const invRows = await t.query('SELECT invoice_id FROM Invoices WHERE booking_id = ?', [bookingId]);
 
     if (invRows.length) {
-      // Đã có hóa đơn → thêm vào Invoice_Details và cập nhật service_charge
+      // Đã có hóa đơn → thêm dòng detail và cộng vào service_charge
       const invoiceId = invRows[0].invoice_id;
       await t.query(
-        `INSERT INTO Invoice_Details (invoice_id, service_id, quantity, unit_price, subtotal)
+        `INSERT INTO invoice_details (invoice_id, service_id, quantity, unit_price, subtotal)
          VALUES (?, ?, ?, ?, ?)`,
         [invoiceId, service_id, qty, svc.price, subtotal]
       );
@@ -195,14 +197,14 @@ async function orderService(req, res) {
         [subtotal, subtotal, invoiceId]
       );
     } else {
-      // Chưa có hóa đơn → tạo hóa đơn tạm (sẽ được cập nhật khi checkout)
+      // Chưa có hóa đơn → tạo hóa đơn tạm, sẽ cập nhật đầy đủ khi checkout
       const newInv = await t.query(
         `INSERT INTO Invoices (booking_id, payment_method, room_charge, service_charge, total_amount, amount_paid, change_amount)
          VALUES (?, 'cash', 0, ?, ?, 0, 0)`,
         [bookingId, subtotal, subtotal]
       );
       await t.query(
-        `INSERT INTO Invoice_Details (invoice_id, service_id, quantity, unit_price, subtotal)
+        `INSERT INTO invoice_details (invoice_id, service_id, quantity, unit_price, subtotal)
          VALUES (?, ?, ?, ?, ?)`,
         [newInv.insertId, service_id, qty, svc.price, subtotal]
       );
@@ -223,7 +225,8 @@ async function orderService(req, res) {
     res.status(500).json({ message: 'Lỗi server.' });
   }
 }
-// staffOrderService — Nhân viên order dịch vụ thay cho khách (theo booking_id)
+
+// ── staffOrderService — Nhân viên order dịch vụ thay cho khách ───────────────
 async function staffOrderService(req, res) {
   const db = require('./config/db');
   const { booking_id, service_id, quantity = 1 } = req.body;
@@ -247,7 +250,7 @@ async function staffOrderService(req, res) {
     if (!svcs.length) { await t.rollback(); return res.status(404).json({ message: 'Dịch vụ không tồn tại hoặc đã ngừng.' }); }
     const svc = svcs[0];
 
-    // 3. Kiểm tra tồn kho (với vật tư tính đơn vị, không phải Lượt)
+    // 3. Kiểm tra tồn kho
     if (svc.unit !== 'Lượt' && svc.stock_quantity < qty) {
       await t.rollback();
       return res.status(409).json({ message: `Tồn kho không đủ. Hiện có: ${svc.stock_quantity} ${svc.unit}.` });
@@ -265,7 +268,7 @@ async function staffOrderService(req, res) {
     if (invRows.length) {
       const invoiceId = invRows[0].invoice_id;
       await t.query(
-        'INSERT INTO Invoice_Details (invoice_id, service_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO invoice_details (invoice_id, service_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)',
         [invoiceId, service_id, qty, svc.price, subtotal]
       );
       await t.query(
@@ -278,13 +281,20 @@ async function staffOrderService(req, res) {
         [booking_id, subtotal, subtotal]
       );
       await t.query(
-        'INSERT INTO Invoice_Details (invoice_id, service_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO invoice_details (invoice_id, service_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)',
         [newInv.insertId, service_id, qty, svc.price, subtotal]
       );
     }
 
     await t.commit();
-    res.json({ message: `Đặt "${svc.service_name}" x${qty} thành công!`, booking_id, service_name: svc.service_name, quantity: qty, unit_price: svc.price, subtotal });
+    res.json({
+      message:      `Đặt "${svc.service_name}" x${qty} thành công!`,
+      booking_id,
+      service_name: svc.service_name,
+      quantity:     qty,
+      unit_price:   svc.price,
+      subtotal,
+    });
   } catch (err) {
     await t.rollback();
     console.error('[staffOrderService]', err);

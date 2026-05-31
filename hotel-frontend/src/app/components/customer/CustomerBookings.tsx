@@ -1,7 +1,4 @@
-// CustomerBookings.tsx — Fix 4 issues:
-// 1. Đổi ngày: cho phép tăng HOẶC giảm (min = hôm nay)
-// 2. Hóa đơn: fix fetch trả về array trực tiếp
-// 3. Order dịch vụ: thêm chọn số lượng, tự động tính vào hóa đơn
+// CustomerBookings.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { Calendar, Receipt, Loader2, Edit2, ShoppingCart, X, Save, Package, Plus, Minus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -33,7 +30,6 @@ function ModalDoiNgay({ booking, token, onClose, onDone }: any) {
 
   const handle = async () => {
     if (!newCheckout) { toast.error('Vui lòng chọn ngày trả phòng mới'); return; }
-    // FIX: cho phép giảm, chỉ cần >= hôm nay
     if (newCheckout < today) { toast.error('Ngày trả phòng không được nhỏ hơn hôm nay'); return; }
     if (newCheckout <= booking.check_in_date) { toast.error('Ngày trả phòng phải sau ngày nhận phòng'); return; }
     setSaving(true);
@@ -78,7 +74,7 @@ function ModalDoiNgay({ booking, token, onClose, onDone }: any) {
               Ngày trả phòng mới <span className="text-red-500">*</span>
             </label>
             <input type="date" value={newCheckout}
-              min={today}  // FIX: min = today, cho phép giảm về hôm nay
+              min={today}
               onChange={(e) => setNewCheckout(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
             <p className="text-xs text-gray-400 mt-1">
@@ -114,26 +110,31 @@ function ModalDoiNgay({ booking, token, onClose, onDone }: any) {
   );
 }
 
-// ── Modal Order dịch vụ — FIX: chọn số lượng ────────────────────────────────
+// ── Modal Order dịch vụ ───────────────────────────────────────────────────────
+// FIX: gọi /api/customer/services thay vì /api/services (route cũ bị chặn với khách hàng)
 function ModalOrderDichVu({ booking, token, onClose }: any) {
-  const [services, setServices]   = useState<any[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [services, setServices]     = useState<any[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
-  const [ordering, setOrdering]   = useState<number | null>(null);
-  const [orderedList, setOrderedList] = useState<any[]>([]); // DS đã order trong session
+  const [ordering, setOrdering]     = useState<number | null>(null);
+  const [orderedList, setOrderedList] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/services`, { headers: { Authorization: `Bearer ${token}` } })
+    // FIX: dùng endpoint dành riêng cho khách hàng
+    fetch(`${API_BASE}/api/customer/services`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => {
-        const list = Array.isArray(d) ? d.filter((s: any) => s.is_available && s.stock_quantity > 0) : [];
+        // Lọc: chỉ hiển thị dịch vụ đang hoạt động và còn hàng (hoặc dịch vụ Lượt không cần tồn kho)
+        const list = Array.isArray(d)
+          ? d.filter((s: any) => s.is_available && (s.unit === 'Lượt' || s.stock_quantity > 0))
+          : [];
         setServices(list);
         // Khởi tạo số lượng = 1 cho mỗi dịch vụ
         const initQty: Record<number, number> = {};
         list.forEach((s: any) => { initQty[s.service_id] = 1; });
         setQuantities(initQty);
       })
-      .catch(() => {})
+      .catch(() => toast.error('Không thể tải danh sách dịch vụ'))
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -146,21 +147,21 @@ function ModalOrderDichVu({ booking, token, onClose }: any) {
     setOrdering(service.service_id);
     try {
       const res  = await fetch(`${API_BASE}/api/customer/services/order`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ service_id: service.service_id, quantity: qty }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       toast.success(`Đặt "${service.service_name}" x${qty} thành công! (+${fmtMoney(data.subtotal)})`);
-      // Thêm vào danh sách đã order
       setOrderedList(prev => [...prev, { ...service, qty, subtotal: data.subtotal }]);
-      // Cập nhật tồn kho trong UI
+      // Cập nhật tồn kho trong UI (ẩn luôn nếu hết)
       setServices(prev => prev
         .map(s => s.service_id === service.service_id
           ? { ...s, stock_quantity: s.stock_quantity - qty }
           : s
         )
-        .filter(s => s.stock_quantity > 0 || s.unit === 'Lượt')
+        .filter(s => s.unit === 'Lượt' || s.stock_quantity > 0)
       );
       setQuantities(prev => ({ ...prev, [service.service_id]: 1 }));
     } catch (err: any) { toast.error(err.message || 'Lỗi đặt dịch vụ'); }
@@ -192,6 +193,7 @@ function ModalOrderDichVu({ booking, token, onClose }: any) {
           ) : services.map(s => {
             const qty    = quantities[s.service_id] || 1;
             const subtot = Number(s.price) * qty;
+            const maxQty = s.unit === 'Lượt' ? 99 : s.stock_quantity;
             return (
               <div key={s.service_id} className="border border-gray-200 rounded-xl p-4">
                 <div className="flex items-start justify-between mb-3">
@@ -199,22 +201,23 @@ function ModalOrderDichVu({ booking, token, onClose }: any) {
                     <p className="font-medium text-gray-800">{s.service_name}</p>
                     <p className="text-sm text-gray-500">
                       {fmtMoney(Number(s.price))} / {s.unit}
-                      {s.unit !== 'Lượt' && <span className="ml-2 text-orange-500">Còn {s.stock_quantity} {s.unit}</span>}
+                      {s.unit !== 'Lượt' && (
+                        <span className="ml-2 text-orange-500">Còn {s.stock_quantity} {s.unit}</span>
+                      )}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   {/* Chọn số lượng */}
                   <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
-                    <button onClick={() => setQty(s.service_id, qty - 1, s.unit === 'Lượt' ? 99 : s.stock_quantity)}
+                    <button onClick={() => setQty(s.service_id, qty - 1, maxQty)}
                       className="px-3 py-1.5 hover:bg-gray-100 text-gray-600">
                       <Minus className="w-3.5 h-3.5" />
                     </button>
-                    <input type="number" value={qty} min={1}
-                      max={s.unit === 'Lượt' ? 99 : s.stock_quantity}
-                      onChange={e => setQty(s.service_id, parseInt(e.target.value) || 1, s.unit === 'Lượt' ? 99 : s.stock_quantity)}
+                    <input type="number" value={qty} min={1} max={maxQty}
+                      onChange={e => setQty(s.service_id, parseInt(e.target.value) || 1, maxQty)}
                       className="w-14 text-center py-1.5 border-x border-gray-300 text-sm font-medium focus:outline-none" />
-                    <button onClick={() => setQty(s.service_id, qty + 1, s.unit === 'Lượt' ? 99 : s.stock_quantity)}
+                    <button onClick={() => setQty(s.service_id, qty + 1, maxQty)}
                       className="px-3 py-1.5 hover:bg-gray-100 text-gray-600">
                       <Plus className="w-3.5 h-3.5" />
                     </button>
@@ -224,7 +227,9 @@ function ModalOrderDichVu({ booking, token, onClose }: any) {
                   {/* Nút order */}
                   <button onClick={() => handleOrder(s)} disabled={ordering === s.service_id}
                     className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-60">
-                    {ordering === s.service_id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShoppingCart className="w-3.5 h-3.5" />}
+                    {ordering === s.service_id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <ShoppingCart className="w-3.5 h-3.5" />}
                     Order
                   </button>
                 </div>
@@ -233,7 +238,7 @@ function ModalOrderDichVu({ booking, token, onClose }: any) {
           })}
         </div>
 
-        {/* Đã order trong session */}
+        {/* Tổng kết dịch vụ đã order trong session */}
         {orderedList.length > 0 && (
           <div className="border-t border-gray-100 px-5 py-3 bg-green-50">
             <p className="text-sm font-semibold text-green-700 mb-2">✓ Đã order trong lần này:</p>
@@ -315,7 +320,7 @@ function TabActive({ token, bookings, reload }: any) {
   );
 }
 
-// ── Tab: Lịch sử — FIX: fetch invoices trả về array trực tiếp ────────────────
+// ── Tab: Lịch sử ──────────────────────────────────────────────────────────────
 function TabHistory({ bookings }: { bookings: any[] }) {
   const [tab, setTab] = useState<'bookings'|'invoices'>('bookings');
   const { token } = useAuth();
@@ -337,7 +342,6 @@ function TabHistory({ bookings }: { bookings: any[] }) {
       .finally(() => setLoadingInv(false));
   }, [tab, token]);
 
-  // Load Invoice_Details khi expand
   const toggleExpand = async (invoiceId: number) => {
     if (expandedId === invoiceId) { setExpandedId(null); return; }
     setExpandedId(invoiceId);
@@ -408,7 +412,6 @@ function TabHistory({ bookings }: { bookings: any[] }) {
 
                   return (
                     <div key={inv.invoice_id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                      {/* Header hóa đơn */}
                       <div className="flex items-center justify-between px-5 py-4 bg-gray-50 border-b border-gray-100">
                         <div>
                           <p className="font-bold text-gray-800">Hóa đơn #{inv.invoice_id}</p>
@@ -423,7 +426,6 @@ function TabHistory({ bookings }: { bookings: any[] }) {
                         </div>
                       </div>
 
-                      {/* Thông tin cơ bản — luôn hiển thị */}
                       <div className="px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-500">Ngày đặt phòng</span>
@@ -451,25 +453,20 @@ function TabHistory({ bookings }: { bookings: any[] }) {
                         </div>
                       </div>
 
-                      {/* Chi tiết tài chính — mở rộng */}
                       {isExpanded && (
                         <div className="px-5 pb-4 space-y-3">
                           <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
                             <p className="font-semibold text-gray-700 mb-2">Chi tiết thanh toán</p>
-
                             <div className="flex justify-between">
                               <span className="text-gray-500">Tiền phòng ({nights} đêm × {fmtMoney(Number(inv.price_per_night))})</span>
                               <span>{fmtMoney(Number(inv.room_charge))}</span>
                             </div>
-
                             {Number(inv.service_charge) > 0 && (
                               <div className="flex justify-between">
                                 <span className="text-gray-500">Tiền dịch vụ / vật tư</span>
                                 <span>{fmtMoney(Number(inv.service_charge))}</span>
                               </div>
                             )}
-
-                            {/* Danh sách vật tư đã order */}
                             {details === undefined && Number(inv.service_charge) > 0 && (
                               <p className="text-xs text-gray-400 ml-4 italic">Đang tải chi tiết dịch vụ...</p>
                             )}
@@ -487,19 +484,16 @@ function TabHistory({ bookings }: { bookings: any[] }) {
                             {details && details.length === 0 && Number(inv.service_charge) > 0 && (
                               <p className="text-xs text-gray-400 ml-4 italic">Không có chi tiết dịch vụ</p>
                             )}
-
                             {Number(inv.deposit_amount) > 0 && (
                               <div className="flex justify-between text-orange-600">
                                 <span>Tiền đặt cọc (đã trừ)</span>
                                 <span>- {fmtMoney(Number(inv.deposit_amount))}</span>
                               </div>
                             )}
-
                             <div className="flex justify-between font-bold text-base pt-2 border-t border-gray-200">
                               <span>Tổng thanh toán</span>
                               <span className="text-blue-600">{fmtMoney(Number(inv.total_amount))}</span>
                             </div>
-
                             {Number(inv.amount_paid) > 0 && (
                               <>
                                 <div className="flex justify-between text-gray-500 text-xs">

@@ -1,7 +1,4 @@
 // customer/CustomerRooms.tsx
-// FIX:
-//   1. Fetch danh sách phòng từ GET /api/rooms/available (DB thật)
-//   2. handleConfirm gọi POST /api/bookings (DB thật) thay vì chỉ add context local
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Users, Wifi, Tv, Wind, Wine, Bath, Waves, X, Eye, Loader2, CalendarCheck, ChevronLeft, ChevronRight, BedDouble, Droplets, Dumbbell, Coffee } from 'lucide-react';
@@ -12,21 +9,19 @@ import { PENDING_BOOKING_KEY, PendingBookingData } from '../ExploreRooms';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface RoomInfo {
-  room_id:   number;
+  room_id:     number;
   room_number: string;
-  type_name: string;         // 'Standard' | 'Deluxe' | 'Suite'
-  base_price: number;
+  type_name:   string;
+  base_price:  number;
   max_occupancy: number;
-  status:    string;
+  status:      string;
   description?: string;
-  // UI helpers
-  image?:    string;
-  amenities?: string[];
+  image?:      string;
+  amenities?:  string[];
 }
 
-// Ảnh mặc định theo hạng phòng
 const TYPE_IMAGES: Record<string, string> = {
   Standard: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800&q=80',
   Deluxe:   'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&q=80',
@@ -39,8 +34,6 @@ const TYPE_COLOR: Record<string, string> = {
   Suite:    'bg-orange-100 text-orange-700',
 };
 
-
-// ── Gallery ảnh theo hạng phòng (phòng ngủ, nhà vệ sinh, tiện nghi, không gian chung)
 const GALLERY_IMAGES: Record<string, { url: string; label: string }[]> = {
   Standard: [
     { url: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=900&q=80', label: 'Phòng ngủ' },
@@ -62,15 +55,14 @@ const GALLERY_IMAGES: Record<string, { url: string; label: string }[]> = {
   ],
 };
 
-// Tiện nghi chi tiết theo hạng phòng
 const ROOM_FACILITIES: Record<string, { icon: string; label: string }[]> = {
   Standard: [
-    { icon: 'bed',     label: 'Giường đôi Queen' },
-    { icon: 'wifi',    label: 'Wifi tốc độ cao' },
-    { icon: 'tv',      label: 'TV 40 inch' },
-    { icon: 'ac',      label: 'Điều hòa riêng' },
-    { icon: 'shower',  label: 'Vòi sen nóng lạnh' },
-    { icon: 'safe',    label: 'Két an toàn' },
+    { icon: 'bed',    label: 'Giường đôi Queen' },
+    { icon: 'wifi',   label: 'Wifi tốc độ cao' },
+    { icon: 'tv',     label: 'TV 40 inch' },
+    { icon: 'ac',     label: 'Điều hòa riêng' },
+    { icon: 'shower', label: 'Vòi sen nóng lạnh' },
+    { icon: 'safe',   label: 'Két an toàn' },
   ],
   Deluxe: [
     { icon: 'bed',     label: 'Giường King Size' },
@@ -97,13 +89,13 @@ const ROOM_FACILITIES: Record<string, { icon: string; label: string }[]> = {
 };
 
 function FacilityIcon({ icon }: { icon: string }) {
-  if (icon === 'bed')     return <BedDouble className="w-4 h-4" />;
+  if (icon === 'bed')                    return <BedDouble className="w-4 h-4" />;
   if (icon === 'shower' || icon === 'bath') return <Droplets className="w-4 h-4" />;
-  if (icon === 'coffee')  return <Coffee className="w-4 h-4" />;
-  if (icon === 'wifi')    return <Wifi className="w-4 h-4" />;
-  if (icon === 'tv')      return <Tv className="w-4 h-4" />;
-  if (icon === 'ac')      return <Wind className="w-4 h-4" />;
-  if (icon === 'minibar') return <Wine className="w-4 h-4" />;
+  if (icon === 'coffee')                 return <Coffee   className="w-4 h-4" />;
+  if (icon === 'wifi')                   return <Wifi     className="w-4 h-4" />;
+  if (icon === 'tv')                     return <Tv       className="w-4 h-4" />;
+  if (icon === 'ac')                     return <Wind     className="w-4 h-4" />;
+  if (icon === 'minibar')                return <Wine     className="w-4 h-4" />;
   return <Dumbbell className="w-4 h-4" />;
 }
 
@@ -113,7 +105,7 @@ function AmenityIcon({ name }: { name: string }) {
   if (name === 'Điều hòa')  return <Wind  className="w-3.5 h-3.5" />;
   if (name === 'Minibar')   return <Wine  className="w-3.5 h-3.5" />;
   if (name === 'Bồn tắm')   return <Bath  className="w-3.5 h-3.5" />;
-  if (name === 'View biển') return <Waves className="w-3.5 h-3.5" />;
+  if (name === 'View biển')  return <Waves className="w-3.5 h-3.5" />;
   return null;
 }
 
@@ -135,7 +127,7 @@ function BookingModal({
   const [checkOut, setCheckOut] = useState(tomorrow);
   const [guests,   setGuests]   = useState(1);
 
-  const nights = Math.max(1, Math.ceil(
+  const nights  = Math.max(1, Math.ceil(
     (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000
   ));
   const total   = nights * room.base_price;
@@ -155,7 +147,6 @@ function BookingModal({
           </button>
         </div>
         <div className="p-6 space-y-4">
-          {/* Khách hàng */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Họ tên</label>
@@ -168,8 +159,6 @@ function BookingModal({
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-600" />
             </div>
           </div>
-
-          {/* Ngày */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Ngày nhận phòng *</label>
@@ -184,8 +173,6 @@ function BookingModal({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
             </div>
           </div>
-
-          {/* Số khách */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Số khách (tối đa {room.max_occupancy})
@@ -194,8 +181,6 @@ function BookingModal({
               onChange={e => setGuests(Math.min(room.max_occupancy, Math.max(1, parseInt(e.target.value) || 1)))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
           </div>
-
-          {/* Tóm tắt chi phí */}
           <div className="bg-blue-50 rounded-xl p-4 space-y-2 text-sm">
             <div className="flex justify-between text-gray-600">
               <span>{nights} đêm × {room.base_price.toLocaleString('vi-VN')} đ</span>
@@ -234,8 +219,8 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
   const [activeImg, setActiveImg] = useState(0);
   const [activeTab, setActiveTab] = useState<'gallery' | 'facilities' | 'description'>('gallery');
 
-  const gallery    = GALLERY_IMAGES[room.type_name]    || GALLERY_IMAGES.Standard;
-  const facilities = ROOM_FACILITIES[room.type_name]   || ROOM_FACILITIES.Standard;
+  const gallery    = GALLERY_IMAGES[room.type_name]  || GALLERY_IMAGES.Standard;
+  const facilities = ROOM_FACILITIES[room.type_name] || ROOM_FACILITIES.Standard;
 
   const prevImg = useCallback(() => setActiveImg(i => (i - 1 + gallery.length) % gallery.length), [gallery.length]);
   const nextImg = useCallback(() => setActiveImg(i => (i + 1) % gallery.length), [gallery.length]);
@@ -245,8 +230,6 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
       style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-
-        {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
           <div>
             <h2 className="text-xl font-bold text-gray-800">Phòng {room.room_number}</h2>
@@ -264,21 +247,13 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
           </div>
         </div>
 
-        {/* ── Scrollable body ── */}
         <div className="overflow-y-auto flex-1">
-
-          {/* ── Gallery ảnh chính ── */}
           <div className="relative bg-black" style={{ height: '300px' }}>
-            <img
-              src={gallery[activeImg].url}
-              alt={gallery[activeImg].label}
-              className="w-full h-full object-cover opacity-90"
-            />
-            {/* Label ảnh */}
+            <img src={gallery[activeImg].url} alt={gallery[activeImg].label}
+              className="w-full h-full object-cover opacity-90" />
             <div className="absolute bottom-3 left-3 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full">
               {gallery[activeImg].label}
             </div>
-            {/* Nút prev/next */}
             <button onClick={prevImg}
               className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center transition-colors">
               <ChevronLeft className="w-5 h-5" />
@@ -287,7 +262,6 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
               className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center transition-colors">
               <ChevronRight className="w-5 h-5" />
             </button>
-            {/* Dots */}
             <div className="absolute bottom-3 right-3 flex gap-1.5">
               {gallery.map((_, i) => (
                 <button key={i} onClick={() => setActiveImg(i)}
@@ -296,7 +270,6 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
             </div>
           </div>
 
-          {/* ── Thumbnail strip ── */}
           <div className="flex gap-2 p-3 bg-gray-50 border-b border-gray-100 overflow-x-auto">
             {gallery.map((img, i) => (
               <button key={i} onClick={() => setActiveImg(i)}
@@ -307,23 +280,18 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
             ))}
           </div>
 
-          {/* ── Tabs ── */}
           <div className="flex border-b border-gray-100">
             {(['gallery', 'facilities', 'description'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${
                   activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}>
-                {tab === 'gallery'      ? '🖼 Ảnh phòng' :
-                 tab === 'facilities'   ? '🛎 Tiện nghi'  :
-                                         '📋 Mô tả'}
+                {tab === 'gallery' ? '🖼 Ảnh phòng' : tab === 'facilities' ? '🛎 Tiện nghi' : '📋 Mô tả'}
               </button>
             ))}
           </div>
 
-          {/* ── Tab content ── */}
           <div className="p-6">
-            {/* Tab: Ảnh phòng (grid thumbnail) */}
             {activeTab === 'gallery' && (
               <div className="grid grid-cols-2 gap-3">
                 {gallery.map((img, i) => (
@@ -338,8 +306,6 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
                 ))}
               </div>
             )}
-
-            {/* Tab: Tiện nghi */}
             {activeTab === 'facilities' && (
               <div className="grid grid-cols-2 gap-3">
                 {facilities.map((f, i) => (
@@ -352,14 +318,12 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
                 ))}
               </div>
             )}
-
-            {/* Tab: Mô tả */}
             {activeTab === 'description' && (
               <div className="space-y-4 text-sm text-gray-600">
                 <p>{room.description ||
-                  (room.type_name === 'Suite'   ? 'Suite hạng sang với không gian rộng rãi, phòng khách riêng biệt, bồn tắm Jacuzzi và ban công view thành phố toàn cảnh. Lý tưởng cho các dịp đặc biệt hoặc kỳ nghỉ cao cấp.' :
-                   room.type_name === 'Deluxe'  ? 'Phòng Deluxe rộng rãi với nội thất cao cấp, giường King Size êm ái, minibar đa dạng và tầm nhìn ra thành phố tuyệt đẹp. Trải nghiệm hoàn hảo cho cặp đôi.' :
-                   'Phòng Standard ấm cúng, đầy đủ tiện nghi cơ bản cần thiết, phù hợp cho cả khách công tác lẫn du lịch. Sạch sẽ, thoáng mát, vị trí thuận tiện.')}
+                  (room.type_name === 'Suite'  ? 'Suite hạng sang với không gian rộng rãi, phòng khách riêng biệt, bồn tắm Jacuzzi và ban công view thành phố toàn cảnh.' :
+                   room.type_name === 'Deluxe' ? 'Phòng Deluxe rộng rãi với nội thất cao cấp, giường King Size êm ái, minibar đa dạng và tầm nhìn ra thành phố tuyệt đẹp.' :
+                   'Phòng Standard ấm cúng, đầy đủ tiện nghi cơ bản, phù hợp cho khách công tác lẫn du lịch.')}
                 </p>
                 <div className="bg-blue-50 rounded-xl p-4">
                   <p className="font-semibold text-blue-800 mb-2">Thông tin phòng</p>
@@ -374,14 +338,17 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
           </div>
         </div>
 
-        {/* ── Footer ── */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 flex-shrink-0">
           <div>
             <p className="text-xs text-gray-400">Giá mỗi đêm</p>
             <p className="text-2xl font-bold text-blue-600">{room.base_price.toLocaleString('vi-VN')} đ</p>
           </div>
           <button onClick={onBook} disabled={room.status !== 'available'}
-            className={`px-8 py-3 rounded-xl font-semibold text-sm transition-colors ${room.status === 'available' ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+            className={`px-8 py-3 rounded-xl font-semibold text-sm transition-colors ${
+              room.status === 'available'
+                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            }`}>
             {room.status === 'available' ? 'Đặt phòng ngay' : 'Hết phòng'}
           </button>
         </div>
@@ -400,11 +367,14 @@ export function CustomerRooms() {
   const [detailRoom,   setDetailRoom]   = useState<RoomInfo | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { user, token }  = useAuth();
-  const { refetch }      = useBookings();
-  const navigate         = useNavigate();
+  // FIX Bug 3: lưu loại phòng cần mở modal sau khi rooms load xong
+  const [pendingRoomType, setPendingRoomType] = useState<string | null>(null);
 
-  // ── Fetch danh sách phòng trống từ API thật ─────────────────────────────────
+  const { user, token } = useAuth();
+  const { refetch }     = useBookings();
+  const navigate        = useNavigate();
+
+  // ── Fetch danh sách phòng từ API ──────────────────────────────────────────
   const fetchRooms = async () => {
     setLoadingRooms(true);
     try {
@@ -412,13 +382,12 @@ export function CustomerRooms() {
       const res    = await fetch(`${API_BASE}/api/rooms${params}`);
       const data   = await res.json();
       const list   = Array.isArray(data) ? data : [];
-      // Gán ảnh mặc định theo hạng phòng
       const enriched = list.map((r: RoomInfo) => ({
         ...r,
         image:     TYPE_IMAGES[r.type_name] || TYPE_IMAGES.Standard,
-        amenities: r.type_name === 'Suite'    ? ['Wifi','TV','Điều hòa','Minibar','Bồn tắm'] :
-                   r.type_name === 'Deluxe'   ? ['Wifi','TV','Điều hòa','Minibar'] :
-                                                ['Wifi','TV','Điều hòa'],
+        amenities: r.type_name === 'Suite'   ? ['Wifi','TV','Điều hòa','Minibar','Bồn tắm'] :
+                   r.type_name === 'Deluxe'  ? ['Wifi','TV','Điều hòa','Minibar'] :
+                                               ['Wifi','TV','Điều hòa'],
       }));
       setRooms(enriched);
     } catch {
@@ -431,27 +400,39 @@ export function CustomerRooms() {
 
   useEffect(() => { fetchRooms(); }, [selectedType]);
 
-  // ── Xử lý pending booking từ ExploreRooms ──────────────────────────────────
+  // ── FIX Bug 3: Đọc pending booking từ ExploreRooms sau khi đăng nhập/đăng ký
+  // Bước 1: đọc sessionStorage ngay khi component mount, lưu roomType vào state
   useEffect(() => {
     const raw = sessionStorage.getItem(PENDING_BOOKING_KEY);
-    if (raw) {
-      try {
-        const pending: PendingBookingData = JSON.parse(raw);
-        sessionStorage.removeItem(PENDING_BOOKING_KEY);
-        // Tìm phòng theo type vì ROOM_LIST dùng id khác với room_id DB
-        // Chờ rooms load xong rồi mở modal
-        toast.info(`Đang tìm phòng ${pending.roomType} cho bạn...`);
-      } catch {
-        sessionStorage.removeItem(PENDING_BOOKING_KEY);
-      }
+    if (!raw) return;
+    try {
+      const pending: PendingBookingData = JSON.parse(raw);
+      sessionStorage.removeItem(PENDING_BOOKING_KEY);
+      // Lưu loại phòng muốn đặt để xử lý ở bước 2
+      setPendingRoomType(pending.roomType);
+      toast.info(`Đang tìm phòng ${pending.roomType} trống cho bạn...`);
+    } catch {
+      sessionStorage.removeItem(PENDING_BOOKING_KEY);
     }
   }, []);
 
-  // ── handleConfirm: gọi POST /api/bookings thật ─────────────────────────────
+  // ── FIX Bug 3: Bước 2 — khi rooms đã load VÀ có pendingRoomType, tự động mở modal
+  useEffect(() => {
+    if (!pendingRoomType || rooms.length === 0) return;
+    const match = rooms.find(r => r.type_name === pendingRoomType && r.status === 'available');
+    if (match) {
+      setSelectedRoom(match);
+      toast.success(`Đã tìm thấy phòng ${match.type_name} — chọn ngày và xác nhận!`);
+    } else {
+      toast.warning(`Không còn phòng ${pendingRoomType} trống. Vui lòng chọn phòng khác.`);
+    }
+    setPendingRoomType(null); // reset để không trigger lại
+  }, [rooms, pendingRoomType]);
+
+  // ── handleConfirm: gọi POST /api/bookings ────────────────────────────────
   const handleConfirm = async (checkIn: string, checkOut: string, guests: number) => {
     if (!selectedRoom || !user || !token) return;
 
-    // Tìm customer_id từ user (đã được lưu trong JWT)
     const customerId = user.customer_id;
     if (!customerId) {
       toast.error('Không tìm thấy hồ sơ khách hàng. Vui lòng liên hệ lễ tân.');
@@ -462,18 +443,18 @@ export function CustomerRooms() {
     try {
       const res = await fetch(`${API_BASE}/api/customer/bookings`, {
         method:  'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           customer_id:    customerId,
           room_id:        selectedRoom.room_id,
           check_in_date:  checkIn,
           check_out_date: checkOut,
           actual_guests:  guests,
-          deposit_amount: Math.round(selectedRoom.base_price *
-            Math.max(1, Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)) * 0.2),
+          deposit_amount: Math.round(
+            selectedRoom.base_price *
+            Math.max(1, Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)) *
+            0.2
+          ),
         }),
       });
 
@@ -482,13 +463,8 @@ export function CustomerRooms() {
 
       toast.success(`Đặt phòng thành công! Mã booking: #${data.booking_id} 🎉`);
       setSelectedRoom(null);
-
-      // Refresh danh sách phòng (phòng vừa đặt sẽ đổi sang 'booked')
       fetchRooms();
-
-      // Refresh booking context để CustomerBookings hiện ngay
       refetch?.();
-
       navigate('/customer-bookings');
     } catch (err: any) {
       toast.error(err.message || 'Đặt phòng thất bại. Vui lòng thử lại.');
@@ -531,7 +507,6 @@ export function CustomerRooms() {
           <p className="text-lg">Không có phòng trống cho loại này.</p>
         </div>
       ) : (
-        /* Danh sách phòng */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredRooms.map(room => (
             <div key={room.room_id}
@@ -582,7 +557,10 @@ export function CustomerRooms() {
                   </div>
                   <button onClick={() => room.status === 'available' && setSelectedRoom(room)}
                     disabled={room.status !== 'available'}
-                    className={`px-4 py-2 rounded-xl font-medium text-sm transition-colors ${room.status === 'available' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+                    className={`px-4 py-2 rounded-xl font-medium text-sm transition-colors ${
+                      room.status === 'available'
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
                     {room.status === 'available' ? 'Đặt phòng' : 'Hết phòng'}
                   </button>
                 </div>
@@ -592,13 +570,11 @@ export function CustomerRooms() {
         </div>
       )}
 
-      {/* Modal chi tiết */}
       {detailRoom && (
         <RoomDetailModal room={detailRoom} onClose={() => setDetailRoom(null)}
           onBook={() => { setDetailRoom(null); if (detailRoom.status === 'available') setSelectedRoom(detailRoom); }} />
       )}
 
-      {/* Booking Modal */}
       {selectedRoom && (
         <BookingModal
           room={selectedRoom}
