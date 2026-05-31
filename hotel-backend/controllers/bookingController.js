@@ -124,7 +124,7 @@ const checkIn = async (req, res) => {
   const t = await db.beginTransaction();
   try {
     const rows = await t.query(
-      'SELECT booking_id, room_id, status FROM Bookings WHERE booking_id = ?',
+      'SELECT booking_id, room_id, status, check_in_date FROM Bookings WHERE booking_id = ?',
       [parseInt(req.params.id, 10)]
     );
     const booking = rows[0];
@@ -134,17 +134,41 @@ const checkIn = async (req, res) => {
       return res.status(400).json({ message: `Không thể check-in. Trạng thái: "${booking.status}".` });
     }
 
-    await t.query(
-      `UPDATE Bookings SET status = 'checked_in', updated_at = NOW() WHERE booking_id = ?`,
-      [booking.booking_id]
-    );
+    // Nếu check-in sớm hơn ngày dự kiến → tự động cập nhật check_in_date về hôm nay
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const plannedCheckIn = new Date(booking.check_in_date);
+    plannedCheckIn.setHours(0, 0, 0, 0);
+
+    const actualCheckInDate = today < plannedCheckIn
+      ? today.toISOString().split('T')[0]   // check-in sớm → dùng ngày hôm nay
+      : null;                                // đúng ngày hoặc trễ → giữ nguyên
+
+    if (actualCheckInDate) {
+      await t.query(
+        `UPDATE Bookings SET status = 'checked_in', check_in_date = ?, updated_at = NOW() WHERE booking_id = ?`,
+        [actualCheckInDate, booking.booking_id]
+      );
+    } else {
+      await t.query(
+        `UPDATE Bookings SET status = 'checked_in', updated_at = NOW() WHERE booking_id = ?`,
+        [booking.booking_id]
+      );
+    }
+
     await t.query(
       `UPDATE Rooms SET status = 'occupied', updated_at = NOW() WHERE room_id = ?`,
       [booking.room_id]
     );
 
     await t.commit();
-    res.json({ message: 'Check-in thành công.', booking_id: booking.booking_id });
+    res.json({
+      message: actualCheckInDate
+        ? `Check-in thành công. Ngày nhận phòng đã cập nhật thành ${new Date(actualCheckInDate).toLocaleDateString('vi-VN')}.`
+        : 'Check-in thành công.',
+      booking_id: booking.booking_id,
+      check_in_date: actualCheckInDate || booking.check_in_date,
+    });
   } catch (err) {
     await t.rollback();
     console.error('[bookingController.checkIn]', err);

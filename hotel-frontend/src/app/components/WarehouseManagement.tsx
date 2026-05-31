@@ -146,8 +146,8 @@ export function WarehouseManagement() {
     finally { setSaving(false); }
   };
 
-  const lowStockCount = services.filter(s => s.is_low_stock).length;
-  const totalValue    = services.reduce((sum, s) => sum + s.price * s.stock_quantity, 0);
+  const lowStockCount = services.filter(s => !!s.is_low_stock).length;
+  const totalValue    = services.reduce((sum, s) => sum + Number(s.price) * Number(s.stock_quantity), 0);
 
 
   // ── Xóa dịch vụ/vật tư ────────────────────────────────────────────────────
@@ -229,7 +229,7 @@ export function WarehouseManagement() {
                     <span className={`font-bold ${s.is_low_stock ? 'text-red-600' : 'text-green-600'}`}>
                       {Number(s.stock_quantity)}
                     </span>
-                    {s.is_low_stock && <AlertTriangle className="w-4 h-4 inline ml-1 text-red-500" />}
+                    {!!s.is_low_stock && <AlertTriangle className="w-4 h-4 inline ml-1 text-red-500" />}
                   </td>
                   <td className="px-4 py-4 text-sm text-gray-600">{s.min_limit}</td>
                   <td className="px-4 py-4 text-sm">
@@ -345,7 +345,7 @@ export function WarehouseManagement() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
               {Number(addQty) > 0 && (
-                <p className="text-green-600 text-sm">Tồn kho sau nhập: <strong>{stockModal.stock_quantity + Number(addQty)}</strong></p>
+                <p className="text-green-600 text-sm">Tồn kho sau nhập: <strong>{Number(stockModal.stock_quantity) + Number(addQty)}</strong></p>
               )}
             </div>
             <div className="flex gap-3 p-6 border-t">

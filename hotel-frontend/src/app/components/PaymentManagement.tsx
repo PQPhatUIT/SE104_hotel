@@ -27,6 +27,7 @@ interface Invoice {
   service_charge: number;
   total_amount: number;
   amount_paid: number;
+  deposit_refund?: number;
   payment_method: string;
   payment_date: string;
   customer_name: string;
@@ -88,7 +89,9 @@ function TabThanhToan({ token }: { token: string }) {
   const nights      = selected ? Math.max(1, Math.ceil((new Date(selected.check_out_date).getTime() - new Date(selected.check_in_date).getTime()) / 86400000)) : 0;
   const roomCharge  = selected ? nights * Number(selected.price_per_night) : 0;
   const deposit     = selected ? Number(selected.deposit_amount) : 0;
-  const totalAmount = Math.max(roomCharge + serviceCharge - deposit, 0);
+  const rawTotal     = roomCharge + serviceCharge - deposit;
+  const totalAmount  = Math.max(rawTotal, 0);
+  const depositRefund = rawTotal < 0 ? Math.abs(rawTotal) : 0;
 
   const handlePayment = async () => {
     if (!selected) return;
@@ -96,8 +99,9 @@ function TabThanhToan({ token }: { token: string }) {
       `Xác nhận thanh toán & Check-out?\n\n` +
       `Khách: ${selected.customer_name}\n` +
       `Phòng: ${selected.room_number} (${selected.room_type})\n` +
-      `Tổng tiền: ${totalAmount.toLocaleString('vi-VN')} đ\n\n` +
-      `Hành động này sẽ trả phòng và không thể hoàn tác.`
+      `Tổng tiền: ${totalAmount.toLocaleString('vi-VN')} đ\n` +
+      (depositRefund > 0 ? `Hoàn cọc dư: ${depositRefund.toLocaleString('vi-VN')} đ\n` : '') +
+      `\nHành động này sẽ trả phòng và không thể hoàn tác.`
     );
     if (!ok) return;
     setIsPaying(true);
@@ -131,6 +135,13 @@ function TabThanhToan({ token }: { token: string }) {
             <div><p className="text-gray-500">Tiền phòng</p><p className="font-bold">{Number(doneInvoice.room_charge).toLocaleString('vi-VN')} đ</p></div>
             <div><p className="text-gray-500">Tổng thanh toán</p><p className="font-bold text-blue-600 text-lg">{Number(doneInvoice.total_amount).toLocaleString('vi-VN')} đ</p></div>
           </div>
+          {Number(doneInvoice.deposit_refund) > 0 && (
+            <div className="mt-3 flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-4 py-2 text-sm">
+              <span className="text-orange-600 font-semibold">⚠ Hoàn lại tiền cọc dư:</span>
+              <span className="font-bold text-orange-700 text-base">{Number(doneInvoice.deposit_refund).toLocaleString('vi-VN')} đ</span>
+              <span className="text-orange-500 text-xs">(trả lại cho khách)</span>
+            </div>
+          )}
           <button onClick={() => setDoneInvoice(null)} className="mt-3 text-sm text-green-700 underline">Đóng</button>
         </div>
       )}
@@ -216,6 +227,12 @@ function TabThanhToan({ token }: { token: string }) {
                       <span className="text-xl font-bold text-gray-800">Tổng thanh toán</span>
                       <span className="text-2xl font-bold text-blue-600">{totalAmount.toLocaleString('vi-VN')} đ</span>
                     </div>
+                    {depositRefund > 0 && (
+                      <div className="flex justify-between pt-2 border-t border-orange-300 text-orange-700 font-semibold">
+                        <span>⚠ Hoàn lại tiền cọc dư</span>
+                        <span className="text-lg">{depositRefund.toLocaleString('vi-VN')} đ</span>
+                      </div>
+                    )}
                   </div>
                   <button onClick={handlePayment} disabled={isPaying}
                     className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 font-medium">

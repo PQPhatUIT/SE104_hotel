@@ -43,11 +43,13 @@ export function Sidebar() {
   if (!isAuthenticated) {
     return (
       <div className="w-64 bg-blue-900 text-white h-screen flex flex-col">
-        <div className="p-6 flex items-center gap-3 border-b border-blue-800">
-          <Hotel className="w-8 h-8" />
+        <div className="px-4 py-4 flex items-center gap-3 border-b border-blue-800/60">
+          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Hotel className="w-5 h-5 text-white" />
+          </div>
           <div>
-            <h1 className="font-bold text-lg">Hotel Admin</h1>
-            <p className="text-xs text-blue-300">Hệ thống quản lý</p>
+            <h1 className="font-medium text-sm text-white leading-tight">Hotel Admin</h1>
+            <p className="text-xs text-blue-400">Hệ thống quản lý</p>
           </div>
         </div>
         <nav className="flex-1 p-4 overflow-y-auto">
@@ -74,11 +76,13 @@ export function Sidebar() {
 
   return (
     <div className="w-64 bg-blue-900 text-white h-screen flex flex-col">
-      <div className="p-6 flex items-center gap-3 border-b border-blue-800">
-        <Hotel className="w-8 h-8" />
+      <div className="px-4 py-4 flex items-center gap-3 border-b border-blue-800/60">
+        <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+          <Hotel className="w-5 h-5 text-white" />
+        </div>
         <div>
-          <h1 className="font-bold text-lg">Hotel Admin</h1>
-          <p className="text-xs text-blue-300">Hệ thống quản lý</p>
+          <h1 className="font-medium text-sm text-white leading-tight">Hotel Admin</h1>
+          <p className="text-xs text-blue-400">Hệ thống quản lý</p>
         </div>
       </div>
       <nav className="flex-1 p-4 overflow-y-auto">

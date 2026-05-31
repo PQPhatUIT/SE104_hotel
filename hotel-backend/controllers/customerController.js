@@ -66,7 +66,7 @@ const getMyInvoices = async (req, res) => {
       `SELECT COUNT(*) AS total
        FROM Invoices i
        JOIN Bookings b ON i.booking_id = b.booking_id
-       WHERE b.customer_id = ?`,
+       WHERE b.customer_id = ? AND b.status = 'checked_out'`,
       [parseInt(customerId, 10)]
     );
     const total = countRows[0]?.total ?? 0;
@@ -96,7 +96,7 @@ const getMyInvoices = async (req, res) => {
        JOIN Bookings   b  ON i.booking_id   = b.booking_id
        JOIN Rooms      r  ON b.room_id      = r.room_id
        JOIN Room_Types rt ON r.room_type_id = rt.room_type_id
-       WHERE b.customer_id = ?
+       WHERE b.customer_id = ? AND b.status = 'checked_out'
        ORDER BY i.created_at DESC
        LIMIT ? OFFSET ?`,
       [parseInt(customerId, 10), limit, offset]

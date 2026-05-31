@@ -56,12 +56,14 @@ const processPayment = async (req, res) => {
     let invoiceId;
     let serviceCharge;
     let totalAmount;
+    let depositRefund;
 
     if (existingInv.length) {
-      // Đã có invoice tạm → UPDATE: điền room_charge và tính lại total
       invoiceId     = existingInv[0].invoice_id;
       serviceCharge = parseFloat(existingInv[0].service_charge) || 0;
-      totalAmount   = Math.max(roomCharge + serviceCharge - deposit, 0);
+      const rawTotal = roomCharge + serviceCharge - deposit;
+      totalAmount   = Math.max(rawTotal, 0);
+      depositRefund = rawTotal < 0 ? Math.abs(rawTotal) : 0;
 
       await t.query(
         `UPDATE Invoices
@@ -69,21 +71,22 @@ const processPayment = async (req, res) => {
              total_amount   = ?,
              amount_paid    = ?,
              payment_method = ?,
-             change_amount  = 0
+             change_amount  = ?
          WHERE invoice_id = ?`,
-        [roomCharge, totalAmount, totalAmount, payment_method, invoiceId]
+        [roomCharge, totalAmount, totalAmount, payment_method, depositRefund, invoiceId]
       );
     } else {
-      // Chưa có invoice nào → INSERT mới (không có dịch vụ)
       serviceCharge = 0;
-      totalAmount   = Math.max(roomCharge - deposit, 0);
+      const rawTotal = roomCharge - deposit;
+      totalAmount   = Math.max(rawTotal, 0);
+      depositRefund = rawTotal < 0 ? Math.abs(rawTotal) : 0;
 
       const invoiceResult = await t.query(
         `INSERT INTO Invoices
            (booking_id, payment_method, room_charge, service_charge,
             total_amount, amount_paid, change_amount)
-         VALUES (?, ?, ?, 0, ?, ?, 0)`,
-        [parseInt(booking_id, 10), payment_method, roomCharge, totalAmount, totalAmount]
+         VALUES (?, ?, ?, 0, ?, ?, ?)`,
+        [parseInt(booking_id, 10), payment_method, roomCharge, totalAmount, totalAmount, depositRefund]
       );
       invoiceId = invoiceResult.insertId;
     }
@@ -99,8 +102,11 @@ const processPayment = async (req, res) => {
     );
 
     await t.commit();
+    const message = depositRefund > 0
+      ? `Thanh toán thành công! Hoàn lại tiền cọc dư: ${depositRefund.toLocaleString('vi-VN')}đ`
+      : 'Thanh toán thành công!';
     res.status(201).json({
-      message: 'Thanh toán thành công!',
+      message,
       invoice: {
         invoice_id:      invoiceId,
         booking_id:      booking.booking_id,
@@ -110,6 +116,7 @@ const processPayment = async (req, res) => {
         room_charge:     roomCharge,
         service_charge:  serviceCharge,
         deposit,
+        deposit_refund:  depositRefund,
         total_amount:    totalAmount,
       }
     });
