@@ -97,7 +97,7 @@ const createBooking = async (req, res) => {
     );
 
     await t.query(
-      `UPDATE Rooms SET status = 'booked', updated_at = NOW() WHERE room_id = ?`,
+      `UPDATE Rooms SET status = 'occupied', updated_at = NOW() WHERE room_id = ?`,
       [parseInt(room_id, 10)]
     );
 
@@ -208,16 +208,16 @@ const updateBookingDates = async (req, res) => {
 
   const today = new Date(); today.setHours(0,0,0,0);
   const newCheckout = new Date(check_out_date);
-  if (newCheckout <= today) return res.status(400).json({ message: 'Ngày trả phòng mới phải lớn hơn ngày hiện tại.' });
+  // Cho phép tăng hoặc giảm số ngày, nhưng ngày trả phòng mới phải >= hôm nay
+  if (newCheckout < today) return res.status(400).json({ message: 'Ngày trả phòng mới phải lớn hơn hoặc bằng ngày hôm nay.' });
 
   const t = await db.beginTransaction();
   try {
     const rows = await t.query(
       `SELECT b.booking_id, b.room_id, b.customer_id, b.check_in_date, b.check_out_date,
-              b.status, rt.base_price
+              b.status, c.customer_id AS cust_id
        FROM Bookings b
-       JOIN Rooms r ON b.room_id = r.room_id
-       JOIN Room_Types rt ON r.room_type_id = rt.room_type_id
+       JOIN Customers c ON b.customer_id = c.customer_id
        WHERE b.booking_id = ?`,
       [bookingId]
     );
@@ -226,10 +226,7 @@ const updateBookingDates = async (req, res) => {
 
     // Nếu là khách hàng, chỉ được sửa booking của mình
     if (req.user.role === 'Khách hàng') {
-      const cusRows = await t.query(
-        'SELECT c.customer_id FROM Customers c JOIN Accounts a ON c.customer_id = a.customer_id WHERE a.account_id = ?',
-        [req.user.id]
-      );
+      const cusRows = await t.query('SELECT customer_id FROM Customers WHERE customer_id = ?', [req.user.customer_id]);
       if (!cusRows.length || cusRows[0].customer_id !== booking.customer_id) {
         await t.rollback();
         return res.status(403).json({ message: 'Bạn không có quyền sửa booking này.' });
@@ -241,31 +238,16 @@ const updateBookingDates = async (req, res) => {
       return res.status(400).json({ message: `Không thể sửa booking ở trạng thái "${booking.status}".` });
     }
 
-    const newCheckoutStr  = check_out_date;
-    const origCheckout    = new Date(booking.check_out_date);
-    const newCheckoutDate = new Date(newCheckoutStr);
-
-    if (newCheckoutDate <= new Date(booking.check_in_date)) {
+    const newCheckoutStr = check_out_date;
+    if (new Date(newCheckoutStr) <= new Date(booking.check_in_date)) {
       await t.rollback();
       return res.status(400).json({ message: 'Ngày trả phòng phải sau ngày nhận phòng.' });
     }
 
-    // Không cho rút ngắn về trước ngày trả phòng gốc
-    if (newCheckoutDate < origCheckout) {
-      await t.rollback();
-      return res.status(400).json({
-        message: `Không thể rút ngắn thời gian ở. Ngày trả phòng mới phải từ ${origCheckout.toLocaleDateString('vi-VN')} trở đi.`,
-      });
-    }
-
-    // Tính tiền gia hạn nếu kéo dài thêm
-    const extraDays = Math.ceil((newCheckoutDate.getTime() - origCheckout.getTime()) / 86400000);
-    const extraCharge = extraDays > 0 ? extraDays * parseFloat(booking.base_price) : 0;
-
-    // Kiểm tra conflict booking khác cùng phòng
+    // Kiểm tra conflict với booking khác của cùng phòng
     const conflict = await t.query(
       `SELECT COUNT(*) AS cnt FROM Bookings
-       WHERE room_id = ? AND booking_id != ? AND status IN ('confirmed','checked_in','booked')
+       WHERE room_id = ? AND booking_id != ? AND status IN ('confirmed','checked_in')
          AND NOT (check_out_date <= ? OR check_in_date >= ?)`,
       [booking.room_id, bookingId, booking.check_in_date, newCheckoutStr]
     );
@@ -279,14 +261,7 @@ const updateBookingDates = async (req, res) => {
       [newCheckoutStr, bookingId]
     );
     await t.commit();
-    res.json({
-      message:        extraDays > 0 ? `Gia hạn thành công! Phụ thu thêm ${extraDays} đêm.` : 'Cập nhật ngày thành công.',
-      booking_id:     bookingId,
-      check_out_date: newCheckoutStr,
-      extra_days:     extraDays,
-      extra_charge:   extraCharge,
-      price_per_night: booking.base_price,
-    });
+    res.json({ message: 'Cập nhật ngày đặt phòng thành công.', booking_id: bookingId, check_out_date: newCheckoutStr });
   } catch (err) {
     await t.rollback();
     console.error('[updateBookingDates]', err);

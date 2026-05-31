@@ -137,8 +137,15 @@ const deleteService = async (req, res) => {
     const id = parseInt(req.params.id, 10);
 
     // Kiểm tra tên dịch vụ để thông báo rõ ràng
-    const rows = await db.query('SELECT service_name FROM Services WHERE service_id = ?', [id]);
+    const rows = await db.query('SELECT service_name, stock_quantity, unit FROM Services WHERE service_id = ?', [id]);
     if (!rows.length) return res.status(404).json({ message: 'Không tìm thấy dịch vụ.' });
+
+    // Chỉ cho xóa khi hết hàng (stock_quantity = 0)
+    if (rows[0].stock_quantity > 0) {
+      return res.status(409).json({
+        message: `Không thể xóa "${rows[0].service_name}" vì còn ${rows[0].stock_quantity} ${rows[0].unit} trong kho. Chỉ được xóa khi hết hàng.`,
+      });
+    }
 
     // Kiểm tra có trong Invoice_Details không
     const used = await db.query(

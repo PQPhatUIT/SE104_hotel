@@ -98,15 +98,8 @@ const getMyInvoices = async (req, res) => {
       [parseInt(customerId, 10), limit, offset]
     );
 
-    res.json({
-      invoices: rows,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
+    // Trả về array trực tiếp để FE dùng Array.isArray() check được
+    res.json(rows);
 
   } catch (err) {
     console.error('[customerController.getMyInvoices]', err);
