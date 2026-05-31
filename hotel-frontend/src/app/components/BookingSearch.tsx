@@ -29,16 +29,17 @@ export function BookingSearch() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const handleSearch = async () => {
-    if (!keyword.trim() && !status) {
-      toast.error('Vui lòng nhập tên khách hàng hoặc chọn trạng thái để tìm kiếm');
+    // Bắt buộc phải có keyword — tránh trả về toàn bộ danh sách
+    if (!keyword.trim()) {
+      toast.error('Vui lòng nhập tên, số điện thoại hoặc CCCD để tìm kiếm');
       return;
     }
     setLoading(true);
     setSearched(true);
     try {
       const params = new URLSearchParams();
-      if (keyword.trim()) params.set('keyword', keyword.trim());
-      if (status)         params.set('status',  status);
+      params.set('keyword', keyword.trim());      // luôn gửi keyword
+      if (status) params.set('status', status);   // status chỉ gửi khi khác "Tất cả"
 
       const res  = await fetch(`${API_BASE}/api/bookings?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -59,7 +60,7 @@ export function BookingSearch() {
   return (
     <div className="p-8 space-y-6 max-w-6xl mx-auto">
       <h1 className="text-3xl font-bold text-gray-800">Tra cứu Phiếu đặt phòng</h1>
-      <p className="text-sm text-gray-500">BM 4.3 — Tìm kiếm theo tên khách hàng, trạng thái</p>
+      <p className="text-sm text-gray-500">Tìm kiếm theo tên, số điện thoại hoặc CCCD. Có thể lọc thêm theo trạng thái.</p>
 
       {/* ── Bộ lọc ──────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -67,13 +68,13 @@ export function BookingSearch() {
           {/* Tên khách hàng */}
           <div className="flex-1 min-w-48">
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tên khách hàng
+              Tên / SĐT / CCCD *
             </label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Nhập tên khách..."
+                placeholder="Nhập tên, SĐT hoặc CCCD..."
                 value={keyword}
                 onChange={e => setKeyword(e.target.value)}
                 onKeyDown={handleKeyDown}

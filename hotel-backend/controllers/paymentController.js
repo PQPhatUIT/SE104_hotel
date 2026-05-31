@@ -2,11 +2,12 @@
 const db = require('../config/db');
 
 const processPayment = async (req, res) => {
-  const { booking_id, extra_charges = 0 } = req.body;
+  const { booking_id, payment_method = 'cash' } = req.body;
   if (!booking_id) return res.status(400).json({ message: 'Vui lòng cung cấp booking_id.' });
 
   const t = await db.beginTransaction();
   try {
+    // 1. Lấy thông tin booking
     const bookings = await t.query(
       `SELECT b.booking_id, b.room_id, b.customer_id,
               b.check_in_date, b.check_out_date, b.deposit_amount,
@@ -30,26 +31,70 @@ const processPayment = async (req, res) => {
       return res.status(400).json({ message: `Không thể thanh toán. Trạng thái: "${booking.booking_status}".` });
     }
 
-    const nights       = Math.ceil((new Date(booking.check_out_date) - new Date(booking.check_in_date)) / 86400000);
-    const roomCharge   = nights * parseFloat(booking.price_per_night);
-    const extraCharges = parseFloat(extra_charges) || 0;
-    const deposit      = parseFloat(booking.deposit_amount) || 0;
-    const totalAmount  = Math.max(roomCharge + extraCharges - deposit, 0);
+    // 2. Kiểm tra ngày checkout — chỉ cho phép checkout đúng ngày check_out_date
+    const today       = new Date(); today.setHours(0, 0, 0, 0);
+    const checkoutDay = new Date(booking.check_out_date); checkoutDay.setHours(0, 0, 0, 0);
+    if (today < checkoutDay) {
+      await t.rollback();
+      const checkoutStr = checkoutDay.toLocaleDateString('vi-VN');
+      return res.status(400).json({
+        message: `Chưa đến ngày trả phòng (${checkoutStr}). Nếu muốn trả sớm, hãy cập nhật ngày trả phòng về hôm nay trước.`
+      });
+    }
 
-    const invoiceResult = await t.query(
-      `INSERT INTO Invoices
-         (booking_id, payment_method, room_charge, service_charge,
-          total_amount, amount_paid, change_amount)
-       VALUES (?, 'cash', ?, ?, ?, ?, 0)`,
-      [parseInt(booking_id,10), roomCharge, extraCharges, totalAmount, totalAmount]
+    // 3. Tính tiền phòng (dùng số đêm thực tế từ check_in đến check_out)
+    const nights     = Math.ceil((new Date(booking.check_out_date) - new Date(booking.check_in_date)) / 86400000);
+    const roomCharge = nights * parseFloat(booking.price_per_night);
+    const deposit    = parseFloat(booking.deposit_amount) || 0;
+
+    // 3. Kiểm tra đã có invoice tạm (do order dịch vụ trước đó) chưa
+    const existingInv = await t.query(
+      'SELECT invoice_id, service_charge FROM Invoices WHERE booking_id = ?',
+      [parseInt(booking_id, 10)]
     );
 
+    let invoiceId;
+    let serviceCharge;
+    let totalAmount;
+
+    if (existingInv.length) {
+      // Đã có invoice tạm → UPDATE: điền room_charge và tính lại total
+      invoiceId     = existingInv[0].invoice_id;
+      serviceCharge = parseFloat(existingInv[0].service_charge) || 0;
+      totalAmount   = Math.max(roomCharge + serviceCharge - deposit, 0);
+
+      await t.query(
+        `UPDATE Invoices
+         SET room_charge    = ?,
+             total_amount   = ?,
+             amount_paid    = ?,
+             payment_method = ?,
+             change_amount  = 0
+         WHERE invoice_id = ?`,
+        [roomCharge, totalAmount, totalAmount, payment_method, invoiceId]
+      );
+    } else {
+      // Chưa có invoice nào → INSERT mới (không có dịch vụ)
+      serviceCharge = 0;
+      totalAmount   = Math.max(roomCharge - deposit, 0);
+
+      const invoiceResult = await t.query(
+        `INSERT INTO Invoices
+           (booking_id, payment_method, room_charge, service_charge,
+            total_amount, amount_paid, change_amount)
+         VALUES (?, ?, ?, 0, ?, ?, 0)`,
+        [parseInt(booking_id, 10), payment_method, roomCharge, totalAmount, totalAmount]
+      );
+      invoiceId = invoiceResult.insertId;
+    }
+
+    // 4. Cập nhật trạng thái booking & phòng
     await t.query(
-      `UPDATE Bookings SET status = 'checked_out', updated_at = NOW() WHERE booking_id = ?`,
+      'UPDATE Bookings SET status = \'checked_out\', updated_at = NOW() WHERE booking_id = ?',
       [parseInt(booking_id, 10)]
     );
     await t.query(
-      `UPDATE Rooms SET status = 'available', updated_at = NOW() WHERE room_id = ?`,
+      'UPDATE Rooms SET status = \'available\', updated_at = NOW() WHERE room_id = ?',
       [parseInt(booking.room_id, 10)]
     );
 
@@ -57,13 +102,13 @@ const processPayment = async (req, res) => {
     res.status(201).json({
       message: 'Thanh toán thành công!',
       invoice: {
-        invoice_id:      invoiceResult.insertId,
+        invoice_id:      invoiceId,
         booking_id:      booking.booking_id,
         room_number:     booking.room_number,
         nights,
         price_per_night: booking.price_per_night,
         room_charge:     roomCharge,
-        extra_charges:   extraCharges,
+        service_charge:  serviceCharge,
         deposit,
         total_amount:    totalAmount,
       }

@@ -3,7 +3,7 @@ const db = require('../config/db');
 
 const getBookings = async (req, res) => {
   try {
-    const { status, room_id, customer_id, date } = req.query;
+    const { status, room_id, customer_id, date, keyword } = req.query;
     const conditions = [];
     const params     = [];
 
@@ -13,6 +13,12 @@ const getBookings = async (req, res) => {
     if (date) {
       conditions.push('? BETWEEN b.check_in_date AND b.check_out_date');
       params.push(date);
+    }
+    // Tìm theo tên, SĐT hoặc CCCD — chỉ trả kết quả khớp, không trả tất cả
+    if (keyword && keyword.trim()) {
+      const kw = `%${keyword.trim()}%`;
+      conditions.push('(c.full_name LIKE ? OR c.phone LIKE ? OR c.id_card LIKE ?)');
+      params.push(kw, kw, kw);
     }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';

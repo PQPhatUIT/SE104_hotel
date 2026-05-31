@@ -11,7 +11,8 @@ const { getMyBookings, getMyInvoices }                              = require('.
 const { getCustomers, getCustomerById,
         createCustomer, updateCustomer, deleteCustomer }            = require('./controllers/staffCustomerController');
 const { getRooms, getAvailableRooms, getRoomById,
-        updateRoomStatus, createRoom, getRoomTypes, deleteRoom }    = require('./controllers/roomController');
+        updateRoomStatus, updateRoom, createRoom, deleteRoom,
+        getRoomTypes, createRoomType, updateRoomType, deleteRoomType } = require('./controllers/roomController');
 const { getBookings, createBooking, updateBookingDates,
         checkIn, cancelBooking, getBookingById }                    = require('./controllers/bookingController');
 const { getServices, getServiceById,
@@ -57,6 +58,10 @@ const isStaff = requireRole('Quản lý', 'Lễ tân');
 
 // ── ROOMS ─────────────────────────────────────────────────────────────────────
 app.patch('/api/rooms/:id/status',         verifyToken, isMgr,   updateRoomStatus);
+app.patch('/api/rooms/:id',                verifyToken, isMgr,   updateRoom);
+app.post ('/api/room-types',               verifyToken, isMgr,   createRoomType);
+app.patch('/api/room-types/:id',           verifyToken, isMgr,   updateRoomType);
+app.delete('/api/room-types/:id',          verifyToken, isMgr,   deleteRoomType);
 app.post ('/api/rooms',                    verifyToken, isMgr,   createRoom);
 app.delete('/api/rooms/:id',               verifyToken, isMgr,   deleteRoom);
 

@@ -39,14 +39,31 @@ function TabThanhToan({ token }: { token: string }) {
   const [searchPhone, setSearchPhone] = useState('');
   const [bookings, setBookings]       = useState<BookingInfo[]>([]);
   const [selected, setSelected]       = useState<BookingInfo | null>(null);
-  const [extraCharge, setExtraCharge] = useState(0);
+  const [serviceCharge, setServiceCharge] = useState(0); // lấy từ invoice tạm (dịch vụ đã order)
   const [isSearching, setIsSearching] = useState(false);
   const [isPaying, setIsPaying]       = useState(false);
   const [doneInvoice, setDoneInvoice] = useState<Invoice | null>(null);
 
+  // Fetch invoice tạm để lấy service_charge đã order
+  const fetchServiceCharge = async (bookingId: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/payments/${bookingId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const inv = await res.json();
+        setServiceCharge(Number(inv.service_charge) || 0);
+      } else {
+        setServiceCharge(0); // chưa có invoice tạm = chưa order dịch vụ nào
+      }
+    } catch {
+      setServiceCharge(0);
+    }
+  };
+
   const handleSearch = async () => {
     if (!searchPhone.trim()) { toast.error('Nhập số điện thoại để tìm'); return; }
-    setIsSearching(true); setBookings([]); setSelected(null); setDoneInvoice(null);
+    setIsSearching(true); setBookings([]); setSelected(null); setDoneInvoice(null); setServiceCharge(0);
     try {
       const cusRes  = await fetch(`${API_BASE}/api/customers?phone=${encodeURIComponent(searchPhone)}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -63,6 +80,7 @@ function TabThanhToan({ token }: { token: string }) {
       if (!bkList.length) { toast.error('Khách hàng không có phòng đang lưu trú (chưa check-in)'); return; }
       setBookings(bkList);
       setSelected(bkList[0]);
+      await fetchServiceCharge(bkList[0].booking_id);
     } catch { toast.error('Lỗi kết nối'); }
     finally { setIsSearching(false); }
   };
@@ -70,7 +88,7 @@ function TabThanhToan({ token }: { token: string }) {
   const nights      = selected ? Math.max(1, Math.ceil((new Date(selected.check_out_date).getTime() - new Date(selected.check_in_date).getTime()) / 86400000)) : 0;
   const roomCharge  = selected ? nights * Number(selected.price_per_night) : 0;
   const deposit     = selected ? Number(selected.deposit_amount) : 0;
-  const totalAmount = Math.max(roomCharge + extraCharge - deposit, 0);
+  const totalAmount = Math.max(roomCharge + serviceCharge - deposit, 0);
 
   const handlePayment = async () => {
     if (!selected) return;
@@ -87,13 +105,13 @@ function TabThanhToan({ token }: { token: string }) {
       const res  = await fetch(`${API_BASE}/api/payments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ booking_id: selected.booking_id, extra_charges: extraCharge }),
+        body: JSON.stringify({ booking_id: selected.booking_id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       toast.success('Thanh toán & Check-out thành công!');
       setDoneInvoice({ ...data.invoice, customer_name: selected.customer_name, room_number: selected.room_number, room_type: selected.room_type });
-      setBookings([]); setSelected(null); setSearchPhone(''); setExtraCharge(0);
+      setBookings([]); setSelected(null); setSearchPhone(''); setServiceCharge(0);
     } catch (err: any) { toast.error(err.message || 'Lỗi thanh toán'); }
     finally { setIsPaying(false); }
   };
@@ -140,7 +158,11 @@ function TabThanhToan({ token }: { token: string }) {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Chọn phòng</label>
                   <select className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                    onChange={(e) => setSelected(bookings.find(b => b.booking_id === Number(e.target.value)) || null)}>
+                    onChange={async (e) => {
+                      const bk = bookings.find(b => b.booking_id === Number(e.target.value)) || null;
+                      setSelected(bk);
+                      if (bk) await fetchServiceCharge(bk.booking_id);
+                    }}>
                     {bookings.map(b => (
                       <option key={b.booking_id} value={b.booking_id}>Phòng {b.room_number}</option>
                     ))}
@@ -178,17 +200,17 @@ function TabThanhToan({ token }: { token: string }) {
                   <div className="flex justify-between pt-2 border-t border-gray-200 font-semibold"><span>Tiền phòng</span><span className="text-blue-600">{roomCharge.toLocaleString('vi-VN')} đ</span></div>
                 </div>
 
-                <div className="mb-5">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Phụ thu / Dịch vụ thêm (đ)</label>
-                  <input type="number" min={0} step={10000} value={extraCharge}
-                    onChange={(e) => setExtraCharge(Number(e.target.value) || 0)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="0" />
-                </div>
+                {serviceCharge > 0 && (
+                  <div className="mb-5 bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
+                    <p className="font-medium text-amber-800 mb-1">🛎 Dịch vụ đã sử dụng</p>
+                    <p className="text-amber-700">{serviceCharge.toLocaleString('vi-VN')} đ (đã tích lũy trong kỳ lưu trú)</p>
+                  </div>
+                )}
 
                 <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
                   <div className="space-y-2 text-sm mb-4">
                     <div className="flex justify-between"><span className="text-gray-700">Tiền phòng</span><span>{roomCharge.toLocaleString('vi-VN')} đ</span></div>
-                    <div className="flex justify-between"><span className="text-gray-700">Phụ thu</span><span>{extraCharge.toLocaleString('vi-VN')} đ</span></div>
+                    <div className="flex justify-between"><span className="text-gray-700">Tiền dịch vụ</span><span>{serviceCharge.toLocaleString('vi-VN')} đ</span></div>
                     <div className="flex justify-between text-red-600"><span>Tiền đặt cọc (trừ)</span><span>-{deposit.toLocaleString('vi-VN')} đ</span></div>
                     <div className="flex justify-between pt-3 border-t-2 border-blue-300">
                       <span className="text-xl font-bold text-gray-800">Tổng thanh toán</span>
