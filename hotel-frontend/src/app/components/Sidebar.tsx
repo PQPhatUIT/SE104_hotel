@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Bed, Users, Receipt, Settings, Hotel, LogOut,
   Package, FileText, UserCog, Calendar, User, LogIn, UserPlus,
-  BarChart2, Search,
+  BarChart2,
 } from 'lucide-react';
 import { useAuth, UserRole } from '../context/AuthContext';
 
@@ -23,8 +23,7 @@ const MENU_ITEMS: MenuItem[] = [
   // Nhân viên
   { path: '/dashboard',      icon: LayoutDashboard, label: 'Báo cáo tổng quan',    roles: ['Quản lý'] },
   { path: '/rooms',          icon: Bed,             label: 'Sơ đồ phòng',          roles: ['Lễ tân', 'Quản lý'] },
-  { path: '/bookings',       icon: FileText,        label: 'Lập phiếu đặt phòng',  roles: ['Lễ tân', 'Quản lý'] },
-  { path: '/booking-search', icon: Search,          label: 'Tra cứu phiếu đặt',    roles: ['Lễ tân', 'Quản lý'] },
+  { path: '/bookings',       icon: FileText,        label: 'Quản lý Đặt phòng',    roles: ['Lễ tân', 'Quản lý'] },
   { path: '/customers',      icon: Users,           label: 'Danh sách khách hàng', roles: ['Lễ tân', 'Quản lý'] },
   { path: '/payments',       icon: Receipt,         label: 'Thanh toán',           roles: ['Lễ tân', 'Quản lý'] },
   { path: '/warehouse',      icon: Package,         label: 'Quản lý Kho',          roles: ['Lễ tân', 'Quản lý'] },
@@ -43,13 +42,11 @@ export function Sidebar() {
   if (!isAuthenticated) {
     return (
       <div className="w-64 bg-blue-900 text-white h-screen flex flex-col">
-        <div className="px-4 py-4 flex items-center gap-3 border-b border-blue-800/60">
-          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Hotel className="w-5 h-5 text-white" />
-          </div>
+        <div className="p-6 flex items-center gap-3 border-b border-blue-800">
+          <Hotel className="w-8 h-8" />
           <div>
-            <h1 className="font-medium text-sm text-white leading-tight">Hotel Admin</h1>
-            <p className="text-xs text-blue-400">Hệ thống quản lý</p>
+            <h1 className="font-bold text-lg">Hotel Admin</h1>
+            <p className="text-xs text-blue-300">Hệ thống quản lý</p>
           </div>
         </div>
         <nav className="flex-1 p-4 overflow-y-auto">
@@ -76,13 +73,11 @@ export function Sidebar() {
 
   return (
     <div className="w-64 bg-blue-900 text-white h-screen flex flex-col">
-      <div className="px-4 py-4 flex items-center gap-3 border-b border-blue-800/60">
-        <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Hotel className="w-5 h-5 text-white" />
-        </div>
+      <div className="p-6 flex items-center gap-3 border-b border-blue-800">
+        <Hotel className="w-8 h-8" />
         <div>
-          <h1 className="font-medium text-sm text-white leading-tight">Hotel Admin</h1>
-          <p className="text-xs text-blue-400">Hệ thống quản lý</p>
+          <h1 className="font-bold text-lg">Hotel Admin</h1>
+          <p className="text-xs text-blue-300">Hệ thống quản lý</p>
         </div>
       </div>
       <nav className="flex-1 p-4 overflow-y-auto">

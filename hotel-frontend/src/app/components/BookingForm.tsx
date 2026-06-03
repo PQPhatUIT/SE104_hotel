@@ -1,6 +1,9 @@
-// BookingForm.tsx — Thêm tab "Danh sách booking" với nút Check-in
+// BookingForm.tsx — 3 tabs: Lập phiếu | Danh sách & Check-in | Tra cứu
 import { useState, useEffect } from 'react';
-import { Search, Plus, Calendar, FileText, Loader2, LogIn, XCircle, RefreshCw, Package, Minus, ShoppingCart, X } from 'lucide-react';
+import {
+  Search, Plus, Calendar, FileText, Loader2, LogIn, XCircle,
+  RefreshCw, Package, Minus, ShoppingCart, X, ChevronDown, ChevronUp,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,7 +28,7 @@ const fmtMoney = (n: number) =>
 export function BookingForm() {
   const { token } = useAuth();
   const headers = { Authorization: `Bearer ${token}` };
-  const [activeTab, setActiveTab] = useState<'create' | 'list'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'search'>('create');
 
   // ── State tạo phiếu ──────────────────────────────────────────────────────
   const [roomTypes, setRoomTypes]       = useState<RoomType[]>([]);
@@ -53,6 +56,14 @@ export function BookingForm() {
   const [svcLoading, setSvcLoading]     = useState(false);
   const [svcQty, setSvcQty]             = useState<Record<number, number>>({});
   const [ordering, setOrdering]         = useState<number | null>(null);
+
+  // ── State tra cứu ────────────────────────────────────────────────────────
+  const [searchKeyword, setSearchKeyword]   = useState('');
+  const [searchStatus, setSearchStatus]     = useState('');
+  const [searchLoading, setSearchLoading]   = useState(false);
+  const [searchResults, setSearchResults]   = useState<any[]>([]);
+  const [searched, setSearched]             = useState(false);
+  const [expandedId, setExpandedId]         = useState<number | null>(null);
 
   // ── Load room types ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -101,11 +112,9 @@ export function BookingForm() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      // API có thể trả về array trực tiếp hoặc { services: [] }
       const raw  = Array.isArray(data) ? data
                  : Array.isArray(data?.services) ? data.services
                  : [];
-      // Lọc is_available (MySQL trả số 0/1, dùng != 0)
       const list = raw.filter((s: any) => s.is_available != 0);
       setServices(list);
       const initQty: Record<number, number> = {};
@@ -150,7 +159,7 @@ export function BookingForm() {
     finally { setOrdering(null); }
   };
 
-  // ── Tra cứu khách hàng ───────────────────────────────────────────────────
+  // ── Tra cứu khách hàng (tab create) ──────────────────────────────────────
   const handleSearchCustomer = async () => {
     if (!form.customerPhone) { toast.error('Nhập SĐT khách hàng'); return; }
     setIsSearching(true);
@@ -222,7 +231,6 @@ export function BookingForm() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       toast.success('Check-in thành công! Trạng thái phòng đã cập nhật.');
-      // Cập nhật local state thay vì reload toàn bộ
       setBookings(prev => prev.map(b =>
         b.booking_id === bookingId ? { ...b, status: 'checked_in' } : b
       ));
@@ -254,6 +262,28 @@ export function BookingForm() {
     }
   };
 
+  // ── Tra cứu phiếu (tab search) ───────────────────────────────────────────
+  const handleBookingSearch = async () => {
+    if (!searchKeyword.trim()) {
+      toast.error('Vui lòng nhập tên, số điện thoại hoặc CCCD để tìm kiếm');
+      return;
+    }
+    setSearchLoading(true);
+    setSearched(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('keyword', searchKeyword.trim());
+      if (searchStatus) params.set('status', searchStatus);
+      const res  = await fetch(`${API_BASE}/api/bookings?${params}`, { headers });
+      const data = await res.json();
+      setSearchResults(Array.isArray(data) ? data : []);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
   return (
     <>
     <div className="p-8">
@@ -282,7 +312,17 @@ export function BookingForm() {
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          <Calendar className="w-4 h-4" /> Danh sách booking & Check-in
+          <Calendar className="w-4 h-4" /> Danh sách & Check-in
+        </button>
+        <button
+          onClick={() => setActiveTab('search')}
+          className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === 'search'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Search className="w-4 h-4" /> Tra cứu phiếu
         </button>
       </div>
 
@@ -494,7 +534,6 @@ export function BookingForm() {
                         </td>
                         <td className="px-5 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            {/* Nút ORDER DỊCH VỤ — chỉ hiện khi checked_in */}
                             {b.status === 'checked_in' && (
                               <button
                                 onClick={() => openServiceModal(b)}
@@ -504,7 +543,6 @@ export function BookingForm() {
                                 Dịch vụ
                               </button>
                             )}
-                            {/* Nút CHECK-IN — chỉ hiện khi status = confirmed */}
                             {b.status === 'confirmed' && (
                               <button
                                 onClick={() => handleCheckIn(b.booking_id)}
@@ -517,7 +555,6 @@ export function BookingForm() {
                                 Check-in
                               </button>
                             )}
-                            {/* Nút HỦY — chỉ hiện khi pending hoặc confirmed */}
                             {['pending','confirmed'].includes(b.status) && (
                               <button
                                 onClick={() => handleCancel(b.booking_id)}
@@ -537,6 +574,172 @@ export function BookingForm() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* Tab 3 — Tra cứu phiếu đặt phòng                                 */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'search' && (
+        <div className="space-y-6">
+          <p className="text-sm text-gray-500">Tìm kiếm theo tên, số điện thoại hoặc CCCD. Có thể lọc thêm theo trạng thái.</p>
+
+          {/* Bộ lọc */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="flex-1 min-w-48">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tên / SĐT / CCCD *
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Nhập tên, SĐT hoặc CCCD..."
+                    value={searchKeyword}
+                    onChange={e => setSearchKeyword(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleBookingSearch()}
+                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
+                <select
+                  value={searchStatus}
+                  onChange={e => setSearchStatus(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                >
+                  <option value="">Tất cả</option>
+                  <option value="pending">Chờ xác nhận</option>
+                  <option value="confirmed">Đã xác nhận</option>
+                  <option value="checked_in">Đang ở</option>
+                  <option value="checked_out">Đã trả phòng</option>
+                  <option value="cancelled">Đã hủy</option>
+                </select>
+              </div>
+
+              <button
+                onClick={handleBookingSearch}
+                disabled={searchLoading}
+                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors"
+              >
+                {searchLoading
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Search className="w-4 h-4" />}
+                {searchLoading ? 'Đang tìm...' : 'Tìm kiếm'}
+              </button>
+            </div>
+          </div>
+
+          {/* Kết quả */}
+          {searched && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Kết quả tra cứu
+                </h3>
+                <span className="text-sm text-gray-400">
+                  {searchLoading ? 'Đang tải...' : `${searchResults.length} phiếu`}
+                </span>
+              </div>
+
+              {searchLoading ? (
+                <div className="p-16 flex justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                </div>
+              ) : searchResults.length === 0 ? (
+                <div className="p-16 text-center text-gray-400">
+                  <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p>Không tìm thấy phiếu đặt phòng nào phù hợp.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {searchResults.map((b: any) => {
+                    const st      = STATUS_CONFIG[b.status] || { label: b.status, color: 'bg-gray-100 text-gray-600' };
+                    const expanded = expandedId === b.booking_id;
+                    return (
+                      <div key={b.booking_id}>
+                        <div
+                          className="flex items-center px-5 py-4 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => setExpandedId(expanded ? null : b.booking_id)}
+                        >
+                          <div className="flex-1 grid grid-cols-5 gap-4 text-sm">
+                            <div>
+                              <p className="text-xs text-gray-400">Mã phiếu</p>
+                              <p className="font-semibold text-gray-800">#{b.booking_id}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400">Khách hàng</p>
+                              <p className="font-medium">{b.customer_name || '—'}</p>
+                              <p className="text-xs text-gray-400">{b.customer_phone}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400">Phòng</p>
+                              <p className="font-medium">{b.room_number}</p>
+                              <p className="text-xs text-gray-400">{b.room_type}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400">Ngày nhận / trả</p>
+                              <p className="font-medium">{fmtDate(b.check_in_date)}</p>
+                              <p className="text-xs text-gray-400">→ {fmtDate(b.check_out_date)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400">Trạng thái</p>
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${st.color}`}>
+                                {st.label}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="ml-4 text-gray-400">
+                            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </div>
+                        </div>
+
+                        {/* Chi tiết mở rộng */}
+                        {expanded && (
+                          <div className="px-5 pb-4 bg-gray-50 grid grid-cols-3 gap-6 text-sm">
+                            <div>
+                              <p className="text-xs text-gray-400 mb-1">CMND/CCCD</p>
+                              <p>{b.id_card || '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400 mb-1">Số khách</p>
+                              <p>{b.actual_guests} khách</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400 mb-1">Số đêm</p>
+                              <p>{b.nights} đêm</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400 mb-1">Tiền đặt cọc</p>
+                              <p className="font-medium">{fmtMoney(b.deposit_amount)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400 mb-1">Giá phòng / đêm</p>
+                              <p className="font-medium">{fmtMoney(b.price_per_night)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400 mb-1">Ngày lập phiếu</p>
+                              <p>{fmtDate(b.created_at)}</p>
+                            </div>
+                            {b.note && (
+                              <div className="col-span-3">
+                                <p className="text-xs text-gray-400 mb-1">Ghi chú</p>
+                                <p className="text-gray-600 italic">{b.note}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

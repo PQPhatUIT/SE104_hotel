@@ -16,7 +16,6 @@ import { PaymentManagement }  from './components/PaymentManagement';
 import { WarehouseManagement }from './components/WarehouseManagement';
 import { EmployeeManagement } from './components/EmployeeManagement';
 import { ReportPage }         from './components/ReportPage';
-import { BookingSearch }      from './components/BookingSearch';
 import { ExploreRooms }       from './components/ExploreRooms';
 
 import CustomerDashboard           from './components/customer/CustomerDashboard';
@@ -58,7 +57,6 @@ function AppLayout() {
             <Route path="/customers"      element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý']}><CustomerManagement /></ProtectedRoute>} />
             <Route path="/payments"       element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý']}><PaymentManagement /></ProtectedRoute>} />
             <Route path="/warehouse"      element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý']}><WarehouseManagement /></ProtectedRoute>} />
-            <Route path="/booking-search" element={<ProtectedRoute allowedRoles={['Lễ tân', 'Quản lý']}><BookingSearch /></ProtectedRoute>} />
 
             {/* Quản lý only */}
             <Route path="/dashboard"  element={<ProtectedRoute allowedRoles={['Quản lý']}><Dashboard /></ProtectedRoute>} />

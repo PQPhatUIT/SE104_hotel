@@ -181,7 +181,6 @@ export function Login() {
                   type="button"
                   className="text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
                 >
-                  Quên mật khẩu?
                 </button>
               </div>
               <div className="relative">
