@@ -73,7 +73,6 @@ export function WarehouseManagement() {
 
   const openEdit = (s: Service) => {
     setEditingId(s.service_id);
-    // ✅ SỬA: convert số → string để input không bị "0" thừa
     setForm({
       service_name:  s.service_name,
       unit:          s.unit,

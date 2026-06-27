@@ -86,7 +86,11 @@ function TabThanhToan({ token }: { token: string }) {
     finally { setIsSearching(false); }
   };
 
-  const nights      = selected ? Math.max(1, Math.ceil((new Date(selected.check_out_date).getTime() - new Date(selected.check_in_date).getTime()) / 86400000)) : 0;
+  // Số đêm thực tế: check_in_date → NOW(), ceil, tối thiểu 1
+  // Khớp với logic backend (paymentController.js)
+  const nights = selected
+    ? Math.max(1, Math.ceil((Date.now() - new Date(selected.check_in_date).setHours(0,0,0,0)) / 86400000))
+    : 0;
   const roomCharge  = selected ? nights * Number(selected.price_per_night) : 0;
   const deposit     = selected ? Number(selected.deposit_amount) : 0;
   const rawTotal     = roomCharge + serviceCharge - deposit;
@@ -187,7 +191,8 @@ function TabThanhToan({ token }: { token: string }) {
                   <div><p className="text-gray-400">SĐT</p><p className="font-medium">{selected.customer_phone}</p></div>
                   <div><p className="text-gray-400">Phòng</p><p className="font-medium">{selected.room_number} ({selected.room_type})</p></div>
                   <div><p className="text-gray-400">Check-in</p><p className="font-medium">{new Date(selected.check_in_date).toLocaleDateString('vi-VN')}</p></div>
-                  <div><p className="text-gray-400">Check-out (dự kiến)</p><p className="font-medium">{new Date(selected.check_out_date).toLocaleDateString('vi-VN')}</p></div>
+                  <div><p className="text-gray-400">Check-out dự kiến</p><p className="font-medium text-gray-400 line-through">{new Date(selected.check_out_date).toLocaleDateString('vi-VN')}</p></div>
+                  <div><p className="text-gray-400">Check-out thực tế</p><p className="font-medium text-green-600">Hôm nay — {new Date().toLocaleDateString('vi-VN')}</p></div>
                   <div><p className="text-gray-400">Số đêm</p><p className="font-medium text-blue-600">{nights} đêm</p></div>
                   <div><p className="text-gray-400">Tiền đặt cọc</p><p className="font-medium text-orange-600">{deposit.toLocaleString('vi-VN')} đ</p></div>
                 </div>

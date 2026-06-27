@@ -102,10 +102,8 @@ const createBooking = async (req, res) => {
        check_in_date, check_out_date, parseInt(actual_guests,10), parseFloat(deposit_amount)]
     );
 
-    await t.query(
-      `UPDATE Rooms SET status = 'occupied', updated_at = NOW() WHERE room_id = ?`,
-      [parseInt(room_id, 10)]
-    );
+    // Phòng giữ nguyên 'available' — chỉ đổi sang 'occupied' khi thực sự check-in
+    // (tránh khóa phòng khi booking chưa được xác nhận check-in)
 
     await t.commit();
     res.status(201).json({
@@ -124,37 +122,35 @@ const checkIn = async (req, res) => {
   const t = await db.beginTransaction();
   try {
     const rows = await t.query(
-      'SELECT booking_id, room_id, status, check_in_date FROM Bookings WHERE booking_id = ?',
+      `SELECT b.booking_id, b.room_id, b.status, b.check_in_date,
+              r.status AS room_status, r.room_number
+       FROM Bookings b
+       JOIN Rooms r ON b.room_id = r.room_id
+       WHERE b.booking_id = ?`,
       [parseInt(req.params.id, 10)]
     );
     const booking = rows[0];
     if (!booking) { await t.rollback(); return res.status(404).json({ message: 'Không tìm thấy booking.' }); }
     if (booking.status !== 'confirmed') {
       await t.rollback();
-      return res.status(400).json({ message: `Không thể check-in. Trạng thái: "${booking.status}".` });
+      return res.status(400).json({ message: `Không thể check-in. Trạng thái booking: "${booking.status}".` });
     }
 
-    // Nếu check-in sớm hơn ngày dự kiến → tự động cập nhật check_in_date về hôm nay
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const plannedCheckIn = new Date(booking.check_in_date);
-    plannedCheckIn.setHours(0, 0, 0, 0);
-
-    const actualCheckInDate = today < plannedCheckIn
-      ? today.toISOString().split('T')[0]   // check-in sớm → dùng ngày hôm nay
-      : null;                                // đúng ngày hoặc trễ → giữ nguyên
-
-    if (actualCheckInDate) {
-      await t.query(
-        `UPDATE Bookings SET status = 'checked_in', check_in_date = ?, updated_at = NOW() WHERE booking_id = ?`,
-        [actualCheckInDate, booking.booking_id]
-      );
-    } else {
-      await t.query(
-        `UPDATE Bookings SET status = 'checked_in', updated_at = NOW() WHERE booking_id = ?`,
-        [booking.booking_id]
-      );
+    // Phòng phải đang 'available' mới được check-in
+    if (booking.room_status !== 'available') {
+      await t.rollback();
+      return res.status(409).json({
+        message: `Không thể check-in — phòng ${booking.room_number} đang ở trạng thái "${booking.room_status}". Vui lòng kiểm tra lại.`
+      });
     }
+
+    // Ghi nhận ngày check-in thực tế là hôm nay (bất kể ngày dự kiến)
+    const actualCheckInDate = new Date().toISOString().split('T')[0];
+
+    await t.query(
+      `UPDATE Bookings SET status = 'checked_in', check_in_date = ?, updated_at = NOW() WHERE booking_id = ?`,
+      [actualCheckInDate, booking.booking_id]
+    );
 
     await t.query(
       `UPDATE Rooms SET status = 'occupied', updated_at = NOW() WHERE room_id = ?`,
@@ -163,11 +159,9 @@ const checkIn = async (req, res) => {
 
     await t.commit();
     res.json({
-      message: actualCheckInDate
-        ? `Check-in thành công. Ngày nhận phòng đã cập nhật thành ${new Date(actualCheckInDate).toLocaleDateString('vi-VN')}.`
-        : 'Check-in thành công.',
+      message: `Check-in thành công. Ngày nhận phòng: ${new Date(actualCheckInDate).toLocaleDateString('vi-VN')}.`,
       booking_id: booking.booking_id,
-      check_in_date: actualCheckInDate || booking.check_in_date,
+      check_in_date: actualCheckInDate,
     });
   } catch (err) {
     await t.rollback();

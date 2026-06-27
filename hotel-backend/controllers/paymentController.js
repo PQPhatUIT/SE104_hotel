@@ -31,20 +31,15 @@ const processPayment = async (req, res) => {
       return res.status(400).json({ message: `Không thể thanh toán. Trạng thái: "${booking.booking_status}".` });
     }
 
-    // 2. Kiểm tra ngày checkout — chỉ cho phép checkout đúng ngày check_out_date
-    const today       = new Date(); today.setHours(0, 0, 0, 0);
-    const checkoutDay = new Date(booking.check_out_date); checkoutDay.setHours(0, 0, 0, 0);
-    if (today < checkoutDay) {
-      await t.rollback();
-      const checkoutStr = checkoutDay.toLocaleDateString('vi-VN');
-      return res.status(400).json({
-        message: `Chưa đến ngày trả phòng (${checkoutStr}). Nếu muốn trả sớm, hãy cập nhật ngày trả phòng về hôm nay trước.`
-      });
-    }
-
-    // 3. Tính tiền phòng (dùng số đêm thực tế từ check_in đến check_out)
-    const nights     = Math.ceil((new Date(booking.check_out_date) - new Date(booking.check_in_date)) / 86400000);
-    const roomCharge = nights * parseFloat(booking.price_per_night);
+    // 2. Tính số đêm thực tế: check_in_date → NOW() (thời điểm checkout thực tế)
+    //    Làm tròn lên (ceil), tối thiểu 1 đêm
+    //    VD: ở 4.5 ngày → 5 đêm; ở 2 giờ → 1 đêm
+    const now         = new Date();
+    const checkInDate = new Date(booking.check_in_date);
+    checkInDate.setHours(0, 0, 0, 0); // chuẩn hóa về đầu ngày check-in
+    const rawDays     = (now - checkInDate) / 86400000;
+    const nights      = Math.max(1, Math.ceil(rawDays));
+    const roomCharge  = nights * parseFloat(booking.price_per_night);
     const deposit    = parseFloat(booking.deposit_amount) || 0;
 
     // 3. Kiểm tra đã có invoice tạm (do order dịch vụ trước đó) chưa
