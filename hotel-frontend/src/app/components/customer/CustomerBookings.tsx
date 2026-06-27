@@ -376,7 +376,9 @@ function TabHistory({ bookings }: { bookings: any[] }) {
         doneBookings.length === 0 ? <p className="text-center py-12 text-gray-400">Chưa có lịch sử</p> :
         <div className="space-y-3">
           {doneBookings.map((b: any) => {
+            // Dùng check_out_date thực tế (đã được backend ghi lại khi checkout)
             const nights = Math.max(1, Math.ceil((new Date(b.check_out_date).getTime() - new Date(b.check_in_date).getTime()) / 86400000));
+            const isCancelled = b.status === 'cancelled';
             return (
               <div key={b.booking_id} className="bg-white border border-gray-200 rounded-xl p-4">
                 <div className="flex items-start justify-between mb-2">
@@ -388,8 +390,11 @@ function TabHistory({ bookings }: { bookings: any[] }) {
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-sm">
                   <div><p className="text-gray-400 text-xs">Nhận phòng</p><p>{formatDate(b.check_in_date)}</p></div>
-                  <div><p className="text-gray-400 text-xs">Trả phòng</p><p>{formatDate(b.check_out_date)}</p></div>
-                  <div><p className="text-gray-400 text-xs">Số đêm</p><p>{nights} đêm</p></div>
+                  <div>
+                    <p className="text-gray-400 text-xs">{isCancelled ? 'Trả phòng (dự kiến)' : 'Trả phòng (thực tế)'}</p>
+                    <p>{formatDate(b.check_out_date)}</p>
+                  </div>
+                  {!isCancelled && <div><p className="text-gray-400 text-xs">Số đêm thực tế</p><p>{nights} đêm</p></div>}
                 </div>
               </div>
             );
@@ -404,6 +409,7 @@ function TabHistory({ bookings }: { bookings: any[] }) {
             ? <p className="text-center py-12 text-gray-400">Chưa có hóa đơn nào</p>
             : <div className="space-y-4">
                 {invoices.map((inv: any) => {
+                  // check_out_date lúc này là ngày checkout thực tế (backend đã ghi NOW() khi thanh toán)
                   const nights = Math.max(1, Math.ceil(
                     (new Date(inv.check_out_date).getTime() - new Date(inv.check_in_date).getTime()) / 86400000
                   ));
@@ -440,7 +446,7 @@ function TabHistory({ bookings }: { bookings: any[] }) {
                           <span className="font-medium">{formatDate(inv.check_in_date)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Trả phòng</span>
+                          <span className="text-gray-500">Trả phòng (thực tế)</span>
                           <span className="font-medium">{formatDate(inv.check_out_date)}</span>
                         </div>
                         <div className="flex justify-between">

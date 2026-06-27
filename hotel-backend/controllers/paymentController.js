@@ -87,8 +87,13 @@ const processPayment = async (req, res) => {
     }
 
     // 4. Cập nhật trạng thái booking & phòng
+    //    Ghi check_out_date thực tế = NOW() để frontend hiển thị đúng
     await t.query(
-      'UPDATE Bookings SET status = \'checked_out\', updated_at = NOW() WHERE booking_id = ?',
+      `UPDATE Bookings
+       SET status = 'checked_out',
+           check_out_date = GREATEST(NOW(), DATE_ADD(check_in_date, INTERVAL 1 SECOND)),
+           updated_at = NOW()
+       WHERE booking_id = ?`,
       [parseInt(booking_id, 10)]
     );
     await t.query(
@@ -140,6 +145,7 @@ const getInvoices = async (req, res) => {
       `SELECT i.invoice_id, i.booking_id, i.payment_method,
               i.room_charge, i.service_charge, i.total_amount,
               i.amount_paid, i.created_at AS payment_date,
+              b.check_in_date, b.check_out_date,
               r.room_number, rt.type_name AS room_type,
               c.full_name AS customer_name
        FROM Invoices i

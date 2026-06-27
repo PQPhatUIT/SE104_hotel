@@ -33,6 +33,8 @@ interface Invoice {
   customer_name: string;
   room_number: string;
   room_type: string;
+  check_in_date?: string;   // ngày nhận phòng
+  check_out_date?: string;  // ngày trả phòng thực tế (backend ghi NOW() khi checkout)
 }
 
 // ── Tab 1: Thanh toán (Check-out) ─────────────────────────────────────────────
@@ -314,7 +316,12 @@ function TabTraCuuHoaDon({ token }: { token: string }) {
       ) : (
         <div className="space-y-4">
           <p className="text-sm text-gray-500 mb-2">Tìm thấy {invoices.length} hóa đơn</p>
-          {invoices.map(inv => (
+          {invoices.map(inv => {
+            // Tính số đêm thực tế từ check_in → check_out (check_out_date đã là ngày thực tế sau fix backend)
+            const nights = (inv.check_in_date && inv.check_out_date)
+              ? Math.max(1, Math.ceil((new Date(inv.check_out_date).getTime() - new Date(inv.check_in_date).getTime()) / 86400000))
+              : null;
+            return (
             <div key={inv.invoice_id} className="border border-gray-200 rounded-xl p-5 hover:border-blue-200 transition-colors">
               <div className="flex items-start justify-between mb-3">
                 <div>
@@ -323,6 +330,25 @@ function TabTraCuuHoaDon({ token }: { token: string }) {
                 </div>
                 <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">Đã thanh toán</span>
               </div>
+
+              {/* Check-in / Check-out thực tế */}
+              {inv.check_in_date && inv.check_out_date && (
+                <div className="grid grid-cols-3 gap-3 text-sm mb-3 bg-gray-50 rounded-lg px-4 py-2">
+                  <div>
+                    <p className="text-gray-400 text-xs">Nhận phòng</p>
+                    <p className="font-medium">{new Date(inv.check_in_date).toLocaleDateString('vi-VN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-xs">Trả phòng (thực tế)</p>
+                    <p className="font-medium">{new Date(inv.check_out_date).toLocaleDateString('vi-VN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-xs">Số đêm thực tế</p>
+                    <p className="font-medium text-blue-600">{nights} đêm</p>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-4 gap-3 text-sm">
                 <div><p className="text-gray-400">Khách hàng</p><p className="font-medium">{inv.customer_name}</p></div>
                 <div><p className="text-gray-400">Tiền phòng</p><p className="font-medium">{Number(inv.room_charge).toLocaleString('vi-VN')} đ</p></div>
@@ -333,7 +359,8 @@ function TabTraCuuHoaDon({ token }: { token: string }) {
                 <p className="text-xs text-gray-400 mt-2">Ngày thanh toán: {new Date(inv.payment_date).toLocaleString('vi-VN')}</p>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
