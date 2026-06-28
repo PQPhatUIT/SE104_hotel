@@ -220,6 +220,54 @@ export function ReportPage() {
               </tbody>
             </table>
           </div>
+          
+          {/* Bảng doanh thu theo phương thức thanh toán */}
+          {revenueData.by_payment_method?.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-6">
+              <div className="p-5 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-700">Doanh thu theo hình thức thanh toán</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-5 py-3 text-gray-500 font-medium">Hình thức</th>
+                    <th className="text-right px-5 py-3 text-gray-500 font-medium">Số giao dịch</th>
+                    <th className="text-right px-5 py-3 text-gray-500 font-medium">Tổng doanh thu</th>
+                    <th className="text-right px-5 py-3 text-gray-500 font-medium">Tỉ lệ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revenueData.by_payment_method.map((row: any) => {
+                    const pct = revenueData.summary?.grand_total > 0
+                      ? Math.round((row.total_revenue / revenueData.summary.grand_total) * 100)
+                      : 0;
+                    return (
+                      <tr key={row.payment_method} className="border-t border-gray-50 hover:bg-gray-50">
+                        <td className="px-5 py-3 font-bold text-indigo-600">
+                        {
+                          String(row.payment_method).toLowerCase() === 'cash' ? 'Tiền mặt' :
+                          String(row.payment_method).toLowerCase() === 'transfer' ? 'Chuyển khoản' :
+                          String(row.payment_method).toLowerCase().includes('card') ? 'Thẻ tín dụng' :
+                          row.payment_method
+                        }
+                        </td>
+                        <td className="px-5 py-3 text-right">{row.invoice_count}</td>
+                        <td className="px-5 py-3 text-right font-semibold text-blue-600">{fmtMoney(row.total_revenue)}</td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-20 bg-gray-100 rounded-full h-2">
+                              <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-xs font-medium text-gray-600 w-8 text-right">{pct}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

@@ -16,6 +16,7 @@ interface Room {
   max_occupancy: number;
   status: 'available' | 'occupied' | 'booked' | 'maintenance';
   updated_at: string;
+  notes?: string;
 }
 
 interface RoomType {
@@ -24,6 +25,8 @@ interface RoomType {
   base_price: number;
   max_occupancy: number;
   description?: string;
+  image?: string;
+  amenities?: string;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -52,11 +55,21 @@ export function RoomManagement() {
   const [isLoadingRooms, setIsLoadingRooms] = useState(false);
   const [filterStatus, setFilterStatus]     = useState('');
   const [deletingRoomId, setDeletingRoomId] = useState<number | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+  const [statusNote, setStatusNote] = useState('');
+
+  useEffect(() => {
+    if (selectedRoom) {
+      setStatusNote(selectedRoom.notes || '');
+    } else {
+      setStatusNote('');
+    }
+  }, [selectedRoom]);
 
   // Modal phòng
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [editRoom, setEditRoom]           = useState<Room | null>(null);
-  const [roomForm, setRoomForm]           = useState({ room_number: '', room_type_id: '', status: 'available' });
+  const [roomForm, setRoomForm]           = useState({ room_number: '', room_type_id: '', status: 'available', notes: '' });
   const [savingRoom, setSavingRoom]       = useState(false);
 
   // ── State: Hạng phòng ─────────────────────────────────────────────────────
@@ -66,7 +79,7 @@ export function RoomManagement() {
   // Modal hạng phòng
   const [showTypeModal, setShowTypeModal] = useState(false);
   const [editType, setEditType]           = useState<RoomType | null>(null);
-  const [typeForm, setTypeForm]           = useState({ type_name: '', base_price: '', max_occupancy: '2', description: '' });
+  const [typeForm, setTypeForm]           = useState({ type_name: '', base_price: '', max_occupancy: '2', description: '', image: '', amenities: '' });
   const [savingType, setSavingType]       = useState(false);
 
   // ── Fetch data ────────────────────────────────────────────────────────────
@@ -97,13 +110,13 @@ export function RoomManagement() {
   // ── Handlers: Phòng ───────────────────────────────────────────────────────
   const openCreateRoom = () => {
     setEditRoom(null);
-    setRoomForm({ room_number: '', room_type_id: roomTypes[0]?.room_type_id?.toString() || '', status: 'available' });
+    setRoomForm({ room_number: '', room_type_id: roomTypes[0]?.room_type_id?.toString() || '', status: 'available', notes: '' });
     setShowRoomModal(true);
   };
 
   const openEditRoom = (r: Room) => {
     setEditRoom(r);
-    setRoomForm({ room_number: r.room_number, room_type_id: String(r.room_type_id), status: r.status });
+    setRoomForm({ room_number: r.room_number, room_type_id: String(r.room_type_id), status: r.status, notes: r.notes || '' });
     setShowRoomModal(true);
   };
 
@@ -127,13 +140,13 @@ export function RoomManagement() {
           );
         }
 
-        // Sửa trạng thái nếu thay đổi
-        if (roomForm.status !== editRoom.status) {
+        // Sửa trạng thái HOẶC ghi chú nếu thay đổi
+        if (roomForm.status !== editRoom.status || roomForm.notes !== (editRoom.notes || '')) {
           promises.push(
             fetch(`${API_BASE}/api/rooms/${editRoom.room_id}/status`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ status: roomForm.status }),
+              body: JSON.stringify({ status: roomForm.status, notes: roomForm.notes }),
             }).then(async r => { if (!r.ok) throw new Error((await r.json()).message); })
           );
         }
@@ -180,7 +193,7 @@ export function RoomManagement() {
   // ── Handlers: Hạng phòng ─────────────────────────────────────────────────
   const openCreateType = () => {
     setEditType(null);
-    setTypeForm({ type_name: '', base_price: '', max_occupancy: '2', description: '' });
+    setTypeForm({ type_name: '', base_price: '', max_occupancy: '2', description: '', image: '', amenities: '' });
     setShowTypeModal(true);
   };
 
@@ -191,6 +204,8 @@ export function RoomManagement() {
       base_price:    String(rt.base_price),
       max_occupancy: String(rt.max_occupancy),
       description:   rt.description || '',
+      image: rt.image || '',
+      amenities: rt.amenities || '',
     });
     setShowTypeModal(true);
   };
@@ -205,6 +220,8 @@ export function RoomManagement() {
         base_price:    Number(typeForm.base_price),
         max_occupancy: Number(typeForm.max_occupancy),
         description:   typeForm.description || null,
+        image:         typeForm.image ? typeForm.image.trim() : null,
+        amenities:     typeForm.amenities ? typeForm.amenities.trim() : null,
       };
       const url    = editType ? `${API_BASE}/api/room-types/${editType.room_type_id}` : `${API_BASE}/api/room-types`;
       const method = editType ? 'PATCH' : 'POST';
@@ -507,9 +524,25 @@ export function RoomManagement() {
                       <p className="text-xs text-gray-400 mt-1">Chỉ chuyển được giữa Trống ↔ Bảo trì.</p>
                     </>
                   )}
+
+                  {editRoom && (
+                    <div className="w-full mt-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Lý do / Ghi chú (nếu có)
+                      </label>
+                      <textarea
+                        value={roomForm.notes}
+                        onChange={e => setRoomForm({ ...roomForm, notes: e.target.value })}
+                        className="w-full box-border px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                        rows={3}
+                        placeholder="VD: Hư vòi sen, Đang dọn dẹp..."
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+          
             <div className="flex gap-3 p-6 border-t">
               <button onClick={() => setShowRoomModal(false)} className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
                 Huỷ
@@ -579,6 +612,27 @@ export function RoomManagement() {
                   rows={3}
                   placeholder="Mô tả tiện nghi, đặc điểm..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Link Ảnh minh họa</label>
+                <input
+                  type="text"
+                  value={typeForm.image}
+                  onChange={e => setTypeForm({ ...typeForm, image: e.target.value })}
+                  placeholder="VD: https://images.unsplash.com/photo-..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tiện nghi (cách bằng dấu phẩy)</label>
+                <input
+                  type="text"
+                  value={typeForm.amenities}
+                  onChange={e => setTypeForm({ ...typeForm, amenities: e.target.value })}
+                  placeholder="VD: Wifi, TV, Điều hòa..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>

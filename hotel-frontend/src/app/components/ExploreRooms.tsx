@@ -1,18 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Wifi, Tv, Wind, Wine, Bath, Waves, LogIn, UserPlus, Hotel, X, Eye } from 'lucide-react';
+import { Users, Wifi, Tv, Wind, Wine, Bath, Waves, LogIn, UserPlus, Hotel, X, Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { Sidebar } from './Sidebar';
 
 export const PENDING_BOOKING_KEY = 'pendingBookingRoom';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export interface RoomInfo {
   id: string;
   name: string;
-  type: 'Standard' | 'Deluxe' | 'Suite';
+  type: string; 
   price: number;
-  available: boolean;
   image: string;
   amenities: string[];
   capacity: number;
@@ -22,80 +22,11 @@ export interface RoomInfo {
 export interface PendingBookingData {
   roomId: string;
   roomName: string;
-  roomType: 'Standard' | 'Deluxe' | 'Suite';
+  roomType: string;
   price: number;
 }
 
-export const ROOM_LIST: RoomInfo[] = [
-  {
-    id: 'R001',
-    name: 'Standard Room',
-    type: 'Standard',
-    price: 500000,
-    available: true,
-    image: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800&q=80',
-    amenities: ['Wifi', 'TV', 'Điều hòa'],
-    capacity: 2,
-    description: 'Phòng tiêu chuẩn ấm cúng, đầy đủ tiện nghi cơ bản, thích hợp cho cặp đôi hoặc du khách đơn.',
-  },
-  {
-    id: 'R002',
-    name: 'Deluxe Room',
-    type: 'Deluxe',
-    price: 800000,
-    available: true,
-    image: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&q=80',
-    amenities: ['Wifi', 'TV', 'Điều hòa', 'Minibar'],
-    capacity: 3,
-    description: 'Không gian rộng rãi hơn với nội thất cao cấp, minibar riêng và tầm nhìn ra thành phố.',
-  },
-  {
-    id: 'R003',
-    name: 'Suite Room',
-    type: 'Suite',
-    price: 1500000,
-    available: false,
-    image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&q=80',
-    amenities: ['Wifi', 'TV', 'Điều hòa', 'Minibar', 'Bồn tắm'],
-    capacity: 4,
-    description: 'Suite sang trọng với phòng khách riêng, bồn tắm đứng và dịch vụ butler 24/7.',
-  },
-  {
-    id: 'R004',
-    name: 'Standard Double',
-    type: 'Standard',
-    price: 550000,
-    available: true,
-    image: 'https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=800&q=80',
-    amenities: ['Wifi', 'TV', 'Điều hòa'],
-    capacity: 2,
-    description: 'Phòng đôi tiêu chuẩn với 2 giường đơn, lý tưởng cho bạn bè hoặc đồng nghiệp.',
-  },
-  {
-    id: 'R005',
-    name: 'Deluxe Twin',
-    type: 'Deluxe',
-    price: 850000,
-    available: true,
-    // FIX: ảnh cũ bị lỗi, thay bằng ảnh mới hoạt động
-    image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&q=80',
-    amenities: ['Wifi', 'TV', 'Điều hòa', 'Minibar', 'Phòng tắm riêng'],
-    capacity: 3,
-    description: 'Phòng deluxe đôi với phòng tắm riêng biệt, hoàn hảo cho gia đình nhỏ.',
-  },
-  {
-    id: 'R006',
-    name: 'Presidential Suite',
-    type: 'Suite',
-    price: 2000000,
-    available: true,
-    image: 'https://images.unsplash.com/photo-1591088398332-8a7791972843?w=800&q=80',
-    amenities: ['Wifi', 'TV', 'Điều hòa', 'Minibar', 'Bồn tắm', 'View biển'],
-    capacity: 6,
-    description: 'Đỉnh cao của sự xa xỉ — suite tổng thống với ban công view biển toàn cảnh.',
-  },
-];
-
+// Hàm hỗ trợ render icon tiện ích
 function AmenityIcon({ name }: { name: string }) {
   if (name === 'Wifi')      return <Wifi  className="w-3.5 h-3.5" />;
   if (name === 'TV')        return <Tv    className="w-3.5 h-3.5" />;
@@ -106,39 +37,27 @@ function AmenityIcon({ name }: { name: string }) {
   return null;
 }
 
-// ── Modal chi tiết phòng ──────────────────────────────────────────────────────
-// Gallery ảnh theo loại phòng
-const GALLERY: Record<string, string[]> = {
-  Standard: [
-    'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800&q=80',
-    'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=80',
-    'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&q=80',
-    'https://images.unsplash.com/photo-1566195992011-5f6b21e539aa?w=800&q=80',
-  ],
-  Deluxe: [
-    'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&q=80',
-    'https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=800&q=80',
-    'https://images.unsplash.com/photo-1560185007-cde436f6a4d0?w=800&q=80',
-    'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=800&q=80',
-  ],
-  Suite: [
-    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&q=80',
-    'https://images.unsplash.com/photo-1591088398332-8a7791972843?w=800&q=80',
-    'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=800&q=80',
-    'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&q=80',
-  ],
+// Hàm lấy màu ngẫu nhiên theo tên hạng phòng
+const getTypeColor = (type: string) => {
+  const t = type.toLowerCase();
+  if (t.includes('suite') || t.includes('vip')) return 'bg-orange-100 text-orange-700';
+  if (t.includes('deluxe') || t.includes('cao cấp')) return 'bg-purple-100 text-purple-700';
+  return 'bg-blue-100 text-blue-700';
 };
 
+// ── Modal chi tiết hạng phòng ──────────────────────────────────────────────────────
 const GALLERY_LABELS = ['Phòng ngủ', 'Phòng tắm', 'Không gian nghỉ', 'Tiện nghi'];
 
 function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: () => void; onBook: () => void }) {
   const [imgIdx, setImgIdx] = useState(0);
-  const gallery = GALLERY[room.type] || [room.image];
-  const typeColorMap: Record<RoomInfo['type'], string> = {
-    Standard: 'bg-blue-100 text-blue-700',
-    Deluxe:   'bg-purple-100 text-purple-700',
-    Suite:    'bg-orange-100 text-orange-700',
-  };
+  
+  // Tự sinh thêm vài tấm ảnh giả lập cho đẹp nếu DB không có
+  const gallery = [
+    room.image,
+    'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=80',
+    'https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=800&q=80',
+    'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=800&q=80',
+  ];
 
   return (
     <div
@@ -153,21 +72,15 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
           <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center bg-black/50 rounded-full text-white hover:bg-black/70">
             <X className="w-4 h-4" />
           </button>
-          <span className={`absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold ${room.available ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-            {room.available ? 'Còn trống' : 'Đã đặt'}
-          </span>
-          {/* Label ảnh */}
           <span className="absolute bottom-3 left-3 px-2.5 py-1 bg-black/50 text-white text-xs rounded-lg">{GALLERY_LABELS[imgIdx] || ''}</span>
-          {/* Nav ảnh */}
-          {gallery.length > 1 && (
-            <div className="absolute bottom-3 right-3 flex gap-1">
-              {gallery.map((_, i) => (
-                <button key={i} onClick={() => setImgIdx(i)}
-                  className={`w-2 h-2 rounded-full transition-colors ${i === imgIdx ? 'bg-white' : 'bg-white/50'}`} />
-              ))}
-            </div>
-          )}
+          <div className="absolute bottom-3 right-3 flex gap-1">
+            {gallery.map((_, i) => (
+              <button key={i} onClick={() => setImgIdx(i)}
+                className={`w-2 h-2 rounded-full transition-colors ${i === imgIdx ? 'bg-white' : 'bg-white/50'}`} />
+            ))}
+          </div>
         </div>
+        
         {/* Thumbnails */}
         <div className="flex gap-2 px-4 py-2 bg-gray-50 flex-shrink-0">
           {gallery.map((src, i) => (
@@ -185,7 +98,7 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
               <h2 className="text-xl font-bold text-gray-800">{room.name}</h2>
               <p className="text-gray-500 text-sm mt-1">{room.description}</p>
             </div>
-            <span className={`ml-3 flex-shrink-0 px-3 py-1 text-xs rounded-full font-semibold ${typeColorMap[room.type]}`}>
+            <span className={`ml-3 flex-shrink-0 px-3 py-1 text-xs rounded-full font-semibold ${getTypeColor(room.type)}`}>
               {room.type}
             </span>
           </div>
@@ -208,19 +121,14 @@ function RoomDetailModal({ room, onClose, onBook }: { room: RoomInfo; onClose: (
 
           <div className="flex items-center justify-between pt-4 border-t border-gray-100">
             <div>
-              <p className="text-xs text-gray-400">Giá mỗi đêm</p>
+              <p className="text-xs text-gray-400">Giá tham khảo / đêm</p>
               <p className="text-2xl font-bold text-blue-600">{room.price.toLocaleString('vi-VN')} đ</p>
             </div>
             <button
               onClick={onBook}
-              disabled={!room.available}
-              className={`px-6 py-2.5 rounded-xl font-medium text-sm transition-colors ${
-                room.available
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
+              className="px-6 py-2.5 rounded-xl font-medium text-sm transition-colors bg-blue-600 text-white hover:bg-blue-700"
             >
-              {room.available ? 'Đặt phòng ngay' : 'Hết phòng'}
+              Đặt phòng ngay
             </button>
           </div>
         </div>
@@ -237,26 +145,10 @@ interface RoomCardProps {
 }
 
 function RoomCard({ room, onBookClick, onDetailClick }: RoomCardProps) {
-  const typeColorMap: Record<RoomInfo['type'], string> = {
-    Standard: 'bg-blue-100 text-blue-700',
-    Deluxe:   'bg-purple-100 text-purple-700',
-    Suite:    'bg-orange-100 text-orange-700',
-  };
-
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
-      {/* Ảnh — tỉ lệ cố định 4:3 */}
       <div className="relative w-full" style={{ paddingTop: '66.67%' }}>
-        <img
-          src={room.image}
-          alt={room.name}
-          className="absolute inset-0 w-full h-full object-cover"
-          loading="lazy"
-        />
-        <span className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-semibold ${room.available ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-          {room.available ? 'Còn trống' : 'Đã đặt'}
-        </span>
-        {/* Nút xem chi tiết overlay */}
+        <img src={room.image} alt={room.name} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
         <button
           onClick={() => onDetailClick(room)}
           className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 bg-black/50 text-white text-xs rounded-lg hover:bg-black/70 transition-colors"
@@ -265,16 +157,12 @@ function RoomCard({ room, onBookClick, onDetailClick }: RoomCardProps) {
         </button>
       </div>
 
-      {/* Nội dung card */}
       <div className="p-5 flex flex-col flex-1">
         <div className="flex items-start justify-between mb-2">
           <div>
             <h3 className="font-bold text-gray-800">{room.name}</h3>
             <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{room.description}</p>
           </div>
-          <span className={`ml-3 flex-shrink-0 px-2.5 py-1 text-xs rounded-full font-medium ${typeColorMap[room.type]}`}>
-            {room.type}
-          </span>
         </div>
 
         <div className="flex items-center gap-1.5 text-sm text-gray-500 my-3">
@@ -292,19 +180,14 @@ function RoomCard({ room, onBookClick, onDetailClick }: RoomCardProps) {
 
         <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-auto">
           <div>
-            <p className="text-xs text-gray-400">Giá mỗi đêm</p>
+            <p className="text-xs text-gray-400">Giá tham khảo / đêm</p>
             <p className="text-xl font-bold text-blue-600">{room.price.toLocaleString('vi-VN')} đ</p>
           </div>
           <button
             onClick={() => onBookClick(room)}
-            disabled={!room.available}
-            className={`px-4 py-2 rounded-xl font-medium text-sm transition-colors ${
-              room.available
-                ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
+            className="px-4 py-2 rounded-xl font-medium text-sm transition-colors bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800"
           >
-            {room.available ? 'Đặt phòng ngay' : 'Hết phòng'}
+            Đặt ngay
           </button>
         </div>
       </div>
@@ -314,20 +197,50 @@ function RoomCard({ room, onBookClick, onDetailClick }: RoomCardProps) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export function ExploreRooms() {
-  const [selectedType, setSelectedType] = useState<'all' | 'Standard' | 'Deluxe' | 'Suite'>('all');
+  const [rooms, setRooms] = useState<RoomInfo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [detailRoom, setDetailRoom]     = useState<RoomInfo | null>(null);
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  const filteredRooms = ROOM_LIST.filter(
-    (room) => selectedType === 'all' || room.type === selectedType
-  );
+  // Gọi API lấy data hạng phòng thật từ DB
+  useEffect(() => {
+    fetch(`${API_BASE}/api/room-types`)
+      .then(res => res.json())
+      .then((data: any[]) => {
+        // Map dữ liệu từ bảng Room_Types sang format giao diện
+        const mappedTypes: RoomInfo[] = data.map(rt => {
+          
+          // Lấy tiện nghi từ DB, nếu không có thì set giá trị mặc định cho đỡ trống
+          const amenitiesList = rt.amenities 
+            ? rt.amenities.split(',').map((a: string) => a.trim()).filter(Boolean)
+            : ['Wifi', 'TV', 'Điều hòa'];
+
+          // Lấy ảnh từ DB, nếu không có thì gán đại một tấm hình phòng ngủ nào đó
+          const fallbackImage = 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800&q=80';
+
+          return {
+            id: String(rt.room_type_id),
+            name: rt.type_name, 
+            type: rt.type_name,
+            price: rt.base_price,
+            image: rt.image || fallbackImage,
+            amenities: amenitiesList,         
+            capacity: rt.max_occupancy,
+            description: rt.description || 'Không gian nghỉ ngơi ấm cúng và đầy đủ tiện nghi, mang lại cho bạn cảm giác thoải mái nhất.',
+          };
+        });
+        setRooms(mappedTypes);
+      })
+      .catch(() => toast.error('Lỗi khi tải danh sách hạng phòng'))
+      .finally(() => setIsLoading(false));
+  }, []);
 
   const handleBookClick = (room: RoomInfo) => {
-    if (!room.available) return;
     setDetailRoom(null);
 
     if (isAuthenticated) {
+      // Chuyển hướng sang trang đặt phòng và truyền ID hạng phòng
       navigate(`/customer-rooms?openRoom=${room.id}`);
       return;
     }
@@ -341,7 +254,7 @@ export function ExploreRooms() {
     sessionStorage.setItem(PENDING_BOOKING_KEY, JSON.stringify(pendingData));
 
     toast.info('Vui lòng đăng nhập để hoàn tất đặt phòng', {
-      description: `Phòng "${room.name}" đã được lưu lại. Đăng nhập để tiếp tục.`,
+      description: `Hạng phòng "${room.name}" đã được lưu lại. Đăng nhập để tiếp tục.`,
       duration: 4000,
     });
 
@@ -353,7 +266,6 @@ export function ExploreRooms() {
       <Sidebar />
 
       <main className="flex-1 overflow-y-auto">
-        {/* Hero banner */}
         <div className="bg-gradient-to-r from-blue-900 to-blue-700 text-white px-10 py-12">
           <div className="flex items-center gap-3 mb-3">
             <Hotel className="w-8 h-8 text-blue-200" />
@@ -361,41 +273,20 @@ export function ExploreRooms() {
               Hotel Management System
             </span>
           </div>
-          <h1 className="text-4xl font-bold mb-2">Khám phá phòng của chúng tôi</h1>
+          <h1 className="text-4xl font-bold mb-2">Khám phá các hạng phòng</h1>
           <p className="text-blue-200 text-lg max-w-xl">
-            Tham khảo hình ảnh, tiện ích và bảng giá. Đăng nhập để đặt phòng ngay hôm nay.
+            Tham khảo hình ảnh, tiện ích và bảng giá của các hạng phòng. Đăng nhập để tiến hành đặt phòng.
           </p>
         </div>
 
         <div className="px-10 py-8">
-          {/* Bộ lọc */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
-            <div className="flex items-center gap-4 flex-wrap">
-              <span className="font-medium text-gray-700">Lọc theo loại phòng:</span>
-              <div className="flex gap-2 flex-wrap">
-                {(['all', 'Standard', 'Deluxe', 'Suite'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setSelectedType(type)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      selectedType === type ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {type === 'all' ? 'Tất cả' : type}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Banner đăng nhập */}
           {!isAuthenticated && (
             <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 mb-6">
               <LogIn className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-amber-800 font-medium text-sm">Bạn đang xem với tư cách khách</p>
                 <p className="text-amber-700 text-xs mt-0.5">
-                  Nhấn "Xem chi tiết" để xem thông tin phòng, "Đặt phòng ngay" để đặt phòng.
+                  Nhấn "Xem chi tiết" để xem thông tin phòng, "Đặt ngay" để đặt phòng.
                 </p>
               </div>
               <div className="flex gap-2 ml-auto flex-shrink-0">
@@ -409,21 +300,31 @@ export function ExploreRooms() {
             </div>
           )}
 
-          {/* Danh sách phòng */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredRooms.map((room) => (
-              <RoomCard
-                key={room.id}
-                room={room}
-                onBookClick={handleBookClick}
-                onDetailClick={setDetailRoom}
-              />
-            ))}
-          </div>
+          {isLoading ? (
+            <div className="py-20 flex flex-col items-center justify-center text-gray-500">
+              <Loader2 className="w-10 h-10 animate-spin text-blue-600 mb-4" />
+              <p>Đang tải danh sách hạng phòng...</p>
+            </div>
+          ) : rooms.length === 0 ? (
+            <div className="py-20 text-center text-gray-400 bg-white rounded-2xl border border-gray-100">
+              <Hotel className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p>Chưa có hạng phòng nào được cấu hình.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {rooms.map((room) => (
+                <RoomCard
+                  key={room.id}
+                  room={room}
+                  onBookClick={handleBookClick}
+                  onDetailClick={setDetailRoom}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </main>
 
-      {/* Modal chi tiết */}
       {detailRoom && (
         <RoomDetailModal
           room={detailRoom}

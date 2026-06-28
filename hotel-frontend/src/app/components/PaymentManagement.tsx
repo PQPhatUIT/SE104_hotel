@@ -33,8 +33,6 @@ interface Invoice {
   customer_name: string;
   room_number: string;
   room_type: string;
-  check_in_date?: string;   // ngày nhận phòng
-  check_out_date?: string;  // ngày trả phòng thực tế (backend ghi NOW() khi checkout)
 }
 
 // ── Tab 1: Thanh toán (Check-out) ─────────────────────────────────────────────
@@ -42,12 +40,12 @@ function TabThanhToan({ token }: { token: string }) {
   const [searchPhone, setSearchPhone] = useState('');
   const [bookings, setBookings]       = useState<BookingInfo[]>([]);
   const [selected, setSelected]       = useState<BookingInfo | null>(null);
-  const [serviceCharge, setServiceCharge] = useState(0); // lấy từ invoice tạm (dịch vụ đã order)
+  const [serviceCharge, setServiceCharge] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
   const [isPaying, setIsPaying]       = useState(false);
   const [doneInvoice, setDoneInvoice] = useState<Invoice | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState('Tiền mặt');
 
-  // Fetch invoice tạm để lấy service_charge đã order
   const fetchServiceCharge = async (bookingId: number) => {
     try {
       const res = await fetch(`${API_BASE}/api/payments/${bookingId}`, {
@@ -57,7 +55,7 @@ function TabThanhToan({ token }: { token: string }) {
         const inv = await res.json();
         setServiceCharge(Number(inv.service_charge) || 0);
       } else {
-        setServiceCharge(0); // chưa có invoice tạm = chưa order dịch vụ nào
+        setServiceCharge(0);
       }
     } catch {
       setServiceCharge(0);
@@ -88,15 +86,15 @@ function TabThanhToan({ token }: { token: string }) {
     finally { setIsSearching(false); }
   };
 
-  // Số đêm thực tế: check_in_date → NOW(), ceil, tối thiểu 1
-  // Khớp với logic backend (paymentController.js)
+  // ✅ Tính số đêm thực tế: check_in_date → NOW(), ceil, tối thiểu 1
+  // VD: ở 4.5 ngày → 5 đêm; ở 2 giờ → 1 đêm (khớp logic backend paymentController)
   const nights = selected
-    ? Math.max(1, Math.ceil((Date.now() - new Date(selected.check_in_date).setHours(0,0,0,0)) / 86400000))
+    ? Math.max(1, Math.ceil((Date.now() - new Date(selected.check_in_date).setHours(0, 0, 0, 0)) / 86400000))
     : 0;
-  const roomCharge  = selected ? nights * Number(selected.price_per_night) : 0;
-  const deposit     = selected ? Number(selected.deposit_amount) : 0;
-  const rawTotal     = roomCharge + serviceCharge - deposit;
-  const totalAmount  = Math.max(rawTotal, 0);
+  const roomCharge    = selected ? nights * Number(selected.price_per_night) : 0;
+  const deposit       = selected ? Number(selected.deposit_amount) : 0;
+  const rawTotal      = roomCharge + serviceCharge - deposit;
+  const totalAmount   = Math.max(rawTotal, 0);
   const depositRefund = rawTotal < 0 ? Math.abs(rawTotal) : 0;
 
   const handlePayment = async () => {
@@ -105,6 +103,8 @@ function TabThanhToan({ token }: { token: string }) {
       `Xác nhận thanh toán & Check-out?\n\n` +
       `Khách: ${selected.customer_name}\n` +
       `Phòng: ${selected.room_number} (${selected.room_type})\n` +
+      `Hình thức: ${paymentMethod}\n` +
+      `Số đêm thực tế: ${nights} đêm\n` +
       `Tổng tiền: ${totalAmount.toLocaleString('vi-VN')} đ\n` +
       (depositRefund > 0 ? `Hoàn cọc dư: ${depositRefund.toLocaleString('vi-VN')} đ\n` : '') +
       `\nHành động này sẽ trả phòng và không thể hoàn tác.`
@@ -115,12 +115,21 @@ function TabThanhToan({ token }: { token: string }) {
       const res  = await fetch(`${API_BASE}/api/payments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ booking_id: selected.booking_id }),
+        body: JSON.stringify({
+          booking_id: selected.booking_id,
+          payment_method: paymentMethod,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       toast.success('Thanh toán & Check-out thành công!');
-      setDoneInvoice({ ...data.invoice, customer_name: selected.customer_name, room_number: selected.room_number, room_type: selected.room_type });
+      setDoneInvoice({
+        ...data.invoice,
+        customer_name:  selected.customer_name,
+        room_number:    selected.room_number,
+        room_type:      selected.room_type,
+        payment_method: paymentMethod,
+      });
       setBookings([]); setSelected(null); setSearchPhone(''); setServiceCharge(0);
     } catch (err: any) { toast.error(err.message || 'Lỗi thanh toán'); }
     finally { setIsPaying(false); }
@@ -135,10 +144,11 @@ function TabThanhToan({ token }: { token: string }) {
             <Receipt className="w-5 h-5 text-green-600" />
             <h2 className="text-lg font-bold text-green-800">Thanh toán thành công — Hóa đơn #{doneInvoice.invoice_id}</h2>
           </div>
-          <div className="grid grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-5 gap-4 text-sm">
             <div><p className="text-gray-500">Khách hàng</p><p className="font-bold">{doneInvoice.customer_name}</p></div>
             <div><p className="text-gray-500">Phòng</p><p className="font-bold">{doneInvoice.room_number}</p></div>
             <div><p className="text-gray-500">Tiền phòng</p><p className="font-bold">{Number(doneInvoice.room_charge).toLocaleString('vi-VN')} đ</p></div>
+            <div><p className="text-gray-500">Hình thức</p><p className="font-bold text-indigo-600">{doneInvoice.payment_method}</p></div>
             <div><p className="text-gray-500">Tổng thanh toán</p><p className="font-bold text-blue-600 text-lg">{Number(doneInvoice.total_amount).toLocaleString('vi-VN')} đ</p></div>
           </div>
           {Number(doneInvoice.deposit_refund) > 0 && (
@@ -193,9 +203,9 @@ function TabThanhToan({ token }: { token: string }) {
                   <div><p className="text-gray-400">SĐT</p><p className="font-medium">{selected.customer_phone}</p></div>
                   <div><p className="text-gray-400">Phòng</p><p className="font-medium">{selected.room_number} ({selected.room_type})</p></div>
                   <div><p className="text-gray-400">Check-in</p><p className="font-medium">{new Date(selected.check_in_date).toLocaleDateString('vi-VN')}</p></div>
-                  <div><p className="text-gray-400">Check-out dự kiến</p><p className="font-medium text-gray-400 line-through">{new Date(selected.check_out_date).toLocaleDateString('vi-VN')}</p></div>
+                  <div><p className="text-gray-400">Check-out (dự kiến)</p><p className="font-medium text-gray-400 line-through">{new Date(selected.check_out_date).toLocaleDateString('vi-VN')}</p></div>
                   <div><p className="text-gray-400">Check-out thực tế</p><p className="font-medium text-green-600">Hôm nay — {new Date().toLocaleDateString('vi-VN')}</p></div>
-                  <div><p className="text-gray-400">Số đêm</p><p className="font-medium text-blue-600">{nights} đêm</p></div>
+                  <div><p className="text-gray-400">Số đêm thực tế</p><p className="font-medium text-blue-600">{nights} đêm</p></div>
                   <div><p className="text-gray-400">Tiền đặt cọc</p><p className="font-medium text-orange-600">{deposit.toLocaleString('vi-VN')} đ</p></div>
                 </div>
               )}
@@ -214,7 +224,7 @@ function TabThanhToan({ token }: { token: string }) {
               <>
                 <div className="mb-5 bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
                   <div className="flex justify-between"><span className="text-gray-600">Giá phòng/đêm</span><span className="font-medium">{Number(selected.price_per_night).toLocaleString('vi-VN')} đ</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">Số đêm</span><span className="font-medium">{nights} đêm</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Số đêm thực tế</span><span className="font-medium">{nights} đêm</span></div>
                   <div className="flex justify-between pt-2 border-t border-gray-200 font-semibold"><span>Tiền phòng</span><span className="text-blue-600">{roomCharge.toLocaleString('vi-VN')} đ</span></div>
                 </div>
 
@@ -241,6 +251,20 @@ function TabThanhToan({ token }: { token: string }) {
                       </div>
                     )}
                   </div>
+
+                  <div className="flex justify-between items-center pt-4 mb-4">
+                    <span className="text-gray-700 font-medium">Hình thức thanh toán</span>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+                    >
+                      <option value="Tiền mặt">Tiền mặt</option>
+                      <option value="Chuyển khoản">Chuyển khoản</option>
+                      <option value="Thẻ tín dụng">Thẻ tín dụng</option>
+                    </select>
+                  </div>
+
                   <button onClick={handlePayment} disabled={isPaying}
                     className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 font-medium">
                     {isPaying ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogOut className="w-5 h-5" />}
@@ -266,7 +290,6 @@ function TabTraCuuHoaDon({ token }: { token: string }) {
     if (!searchPhone.trim()) { toast.error('Nhập số điện thoại để tìm'); return; }
     setIsSearching(true); setInvoices([]);
     try {
-      // Tìm customer
       const cusRes  = await fetch(`${API_BASE}/api/customers?phone=${encodeURIComponent(searchPhone)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -274,7 +297,6 @@ function TabTraCuuHoaDon({ token }: { token: string }) {
       const cusList = Array.isArray(cusData.customers) ? cusData.customers : Array.isArray(cusData) ? cusData : [];
       if (!cusList.length) { toast.error('Không tìm thấy khách hàng'); return; }
 
-      // Lấy tất cả bookings đã checked_out của customer
       const bkRes  = await fetch(`${API_BASE}/api/bookings?customer_id=${cusList[0].customer_id}&status=checked_out`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -282,7 +304,6 @@ function TabTraCuuHoaDon({ token }: { token: string }) {
       const bkList = Array.isArray(bkData) ? bkData : [];
       if (!bkList.length) { toast.info('Khách hàng chưa có hóa đơn nào'); return; }
 
-      // Lấy invoice cho từng booking
       const invResults = await Promise.all(
         bkList.map((b: any) =>
           fetch(`${API_BASE}/api/payments/${b.booking_id}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -299,7 +320,6 @@ function TabTraCuuHoaDon({ token }: { token: string }) {
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-md border border-gray-100">
-      {/* Tìm kiếm */}
       <div className="flex gap-3 mb-6">
         <input type="text" value={searchPhone} onChange={(e) => setSearchPhone(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -310,18 +330,12 @@ function TabTraCuuHoaDon({ token }: { token: string }) {
         </button>
       </div>
 
-      {/* Danh sách hóa đơn */}
       {invoices.length === 0 ? (
         <p className="text-center text-gray-400 py-16">Nhập SĐT để tra cứu lịch sử hóa đơn</p>
       ) : (
         <div className="space-y-4">
           <p className="text-sm text-gray-500 mb-2">Tìm thấy {invoices.length} hóa đơn</p>
-          {invoices.map(inv => {
-            // Tính số đêm thực tế từ check_in → check_out (check_out_date đã là ngày thực tế sau fix backend)
-            const nights = (inv.check_in_date && inv.check_out_date)
-              ? Math.max(1, Math.ceil((new Date(inv.check_out_date).getTime() - new Date(inv.check_in_date).getTime()) / 86400000))
-              : null;
-            return (
+          {invoices.map(inv => (
             <div key={inv.invoice_id} className="border border-gray-200 rounded-xl p-5 hover:border-blue-200 transition-colors">
               <div className="flex items-start justify-between mb-3">
                 <div>
@@ -330,37 +344,23 @@ function TabTraCuuHoaDon({ token }: { token: string }) {
                 </div>
                 <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">Đã thanh toán</span>
               </div>
-
-              {/* Check-in / Check-out thực tế */}
-              {inv.check_in_date && inv.check_out_date && (
-                <div className="grid grid-cols-3 gap-3 text-sm mb-3 bg-gray-50 rounded-lg px-4 py-2">
-                  <div>
-                    <p className="text-gray-400 text-xs">Nhận phòng</p>
-                    <p className="font-medium">{new Date(inv.check_in_date).toLocaleDateString('vi-VN')}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400 text-xs">Trả phòng (thực tế)</p>
-                    <p className="font-medium">{new Date(inv.check_out_date).toLocaleDateString('vi-VN')}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400 text-xs">Số đêm thực tế</p>
-                    <p className="font-medium text-blue-600">{nights} đêm</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-4 gap-3 text-sm">
+              <div className="grid grid-cols-5 gap-3 text-sm">
                 <div><p className="text-gray-400">Khách hàng</p><p className="font-medium">{inv.customer_name}</p></div>
                 <div><p className="text-gray-400">Tiền phòng</p><p className="font-medium">{Number(inv.room_charge).toLocaleString('vi-VN')} đ</p></div>
                 <div><p className="text-gray-400">Phụ thu</p><p className="font-medium">{Number(inv.service_charge).toLocaleString('vi-VN')} đ</p></div>
+                <div><p className="text-gray-400">Hình thức</p><p className="font-medium text-indigo-600">{
+                  String(inv.payment_method).toLowerCase() === 'cash' ? 'Tiền mặt' :
+                  String(inv.payment_method).toLowerCase() === 'transfer' ? 'Chuyển khoản' :
+                  String(inv.payment_method).toLowerCase().includes('card') ? 'Thẻ tín dụng' :
+                  inv.payment_method
+                }</p></div>
                 <div><p className="text-gray-400">Tổng thanh toán</p><p className="font-bold text-blue-600">{Number(inv.total_amount).toLocaleString('vi-VN')} đ</p></div>
               </div>
               {inv.payment_date && (
                 <p className="text-xs text-gray-400 mt-2">Ngày thanh toán: {new Date(inv.payment_date).toLocaleString('vi-VN')}</p>
               )}
             </div>
-            );
-          })}
+          ))}
         </div>
       )}
     </div>
@@ -379,7 +379,6 @@ export function PaymentManagement() {
         <h1 className="text-3xl font-bold text-gray-800">Quản lý Thanh toán</h1>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-2 mb-6">
         <button onClick={() => setTab('thanhtoan')}
           className={`px-5 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors ${tab === 'thanhtoan' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>

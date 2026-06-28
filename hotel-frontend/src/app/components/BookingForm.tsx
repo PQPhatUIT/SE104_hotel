@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 interface RoomType { room_type_id: number; type_name: string; base_price: number; max_occupancy: number; }
-interface Room     { room_id: number; room_number: string; type_name: string; base_price: number; status: string; }
+interface Room     { room_id: number; room_number: string; type_name: string; base_price: number; status: string; note?: string;}
 interface Customer { customer_id: number; full_name: string; phone: string; }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -43,6 +43,7 @@ export function BookingForm() {
     checkOutDate:   '',
     numberOfGuests: 1,
     depositAmount:  0,
+    note: '',
   });
 
   // ── State danh sách booking ──────────────────────────────────────────────
@@ -70,7 +71,7 @@ export function BookingForm() {
     fetch(`${API_BASE}/api/room-types`)
       .then(r => r.json())
       .then(d => setRoomTypes(Array.isArray(d) ? d : []))
-      .catch(() => {});
+      .catch(() => {});                                                               
   }, []);
 
   // ── Load phòng trống khi chọn ngày ───────────────────────────────────────
@@ -206,12 +207,13 @@ export function BookingForm() {
           check_out_date: form.checkOutDate,
           actual_guests:  form.numberOfGuests,
           deposit_amount: form.depositAmount,
+          note: form.note
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       toast.success(`Tạo phiếu thành công! Mã booking: #${data.booking_id}`);
-      setForm({ customerPhone: '', selectedRoomId: '', checkInDate: '', checkOutDate: '', numberOfGuests: 1, depositAmount: 0 });
+      setForm({ customerPhone: '', selectedRoomId: '', checkInDate: '', checkOutDate: '', numberOfGuests: 1, depositAmount: 0, note: '' });
       setCustomer(null);
       setRooms([]);
     } catch (err: any) {
@@ -460,6 +462,20 @@ export function BookingForm() {
                   <div><p className="text-sm text-gray-600">Tổng tiền phòng</p><p className="text-xl font-bold text-blue-600">{totalAmount.toLocaleString('vi-VN')} đ</p></div>
                   <div><p className="text-sm text-gray-600">Tiền cọc</p><p className="text-xl font-bold text-orange-600">{form.depositAmount.toLocaleString('vi-VN')} đ</p></div>
                 </div>
+                
+                <div className="col-span-full mt-4 mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Ghi chú / Yêu cầu đặc biệt
+                  </label>
+                  <textarea
+                    value={form.note || ''}
+                    onChange={(e) => setForm({ ...form, note: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    rows={3}
+                    placeholder="VD: Khách cần nôi em bé, Check-in muộn lúc 22h..."
+                  />
+                </div>
+
                 <button type="submit" disabled={isSubmitting}
                   className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
                   {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
@@ -505,6 +521,7 @@ export function BookingForm() {
                     <th className="px-5 py-3 text-left font-semibold text-gray-600">Nhận phòng</th>
                     <th className="px-5 py-3 text-left font-semibold text-gray-600">Trả phòng</th>
                     <th className="px-5 py-3 text-left font-semibold text-gray-600">Tiền cọc</th>
+                    <th className="px-5 py-3 text-left font-semibold text-gray-600">Ghi chú</th>
                     <th className="px-5 py-3 text-center font-semibold text-gray-600">Trạng thái</th>
                     <th className="px-5 py-3 text-center font-semibold text-gray-600">Thao tác</th>
                   </tr>
@@ -527,6 +544,9 @@ export function BookingForm() {
                         <td className="px-5 py-3">{fmtDate(b.check_in_date)}</td>
                         <td className="px-5 py-3">{fmtDate(b.check_out_date)}</td>
                         <td className="px-5 py-3">{fmtMoney(b.deposit_amount)}</td>
+                        <td className="px-5 py-3 text-gray-500 text-xs max-w-[150px] truncate" title={b.note}>
+                          {b.note || '—'}
+                        </td>
                         <td className="px-5 py-3 text-center">
                           <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${st.color}`}>
                             {st.label}

@@ -4,7 +4,7 @@
 
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 
-export type UserRole = 'Khách hàng' | 'Lễ tân' | 'Quản lý' | 'Thủ kho' | 'Admin';
+export type UserRole = 'Khách hàng' | 'Lễ tân' | 'Quản lý';
 
 // ── Interface User — KHÔNG thay đổi, các component đang dùng đúng shape này ──
 export interface User {
@@ -80,8 +80,8 @@ function sanitizeUser(raw: Record<string, unknown>): User {
     fullName:    String(raw.fullName   ?? raw.full_name ?? raw.username ?? ''),
     phone:       String(raw.phone      ?? ''),
     email:       String(raw.email      ?? ''),
-    // role phải là một trong 5 giá trị hợp lệ
-    role:        (['Admin','Quản lý','Lễ tân','Thủ kho','Khách hàng'].includes(raw.role as string)
+    // role phải là một trong 3 giá trị hợp lệ
+    role:        (['Quản lý','Lễ tân','Khách hàng'].includes(raw.role as string)
                     ? raw.role
                     : 'Khách hàng') as UserRole,
     // is_active (0/1) hoặc status ('active'/'inactive') đều xử lý được

@@ -13,16 +13,17 @@ require('dotenv').config();
 
 // ── Map: role DB → role Frontend ─────────────────────────────
 const ROLE_DB_TO_FRONTEND = {
-  'admin':        'Quản lý',
   'manager':      'Quản lý',
   'receptionist': 'Lễ tân',
-  'warehouse':    'Lễ tân',
   'customer':     'Khách hàng',
 };
 
-const ROLE_FRONTEND_TO_DB = Object.fromEntries(
-  Object.entries(ROLE_DB_TO_FRONTEND).map(([k, v]) => [v, k])
-);
+// Khai báo rõ ràng, KHÔNG dùng Object.fromEntries để tránh bug ghi đè
+const ROLE_FRONTEND_TO_DB = {
+  'Quản lý':    'manager',
+  'Lễ tân':     'receptionist',
+  'Khách hàng': 'customer',
+};
 
 function normalizeAccountToUser(account) {
   return {

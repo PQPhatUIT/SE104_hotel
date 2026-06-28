@@ -61,6 +61,19 @@ const getRevenueReport = async (req, res) => {
       [from, to]
     );
 
+    // 4. Doanh thu theo phương thức thanh toán
+    const revenueByPaymentMethod = await db.query(
+      `SELECT
+         COALESCE(i.payment_method, 'Chưa xác định') AS payment_method,
+         COUNT(i.invoice_id) AS invoice_count,
+         SUM(i.total_amount) AS total_revenue
+       FROM Invoices i
+       WHERE DATE(i.created_at) BETWEEN ? AND ?
+       GROUP BY i.payment_method
+       ORDER BY total_revenue DESC`,
+      [from, to]
+    );
+
     // Tính % cho từng hạng phòng
     const grandTotal = parseFloat(totals[0]?.grand_total || 0);
     const revenueByTypeWithPct = revenueByType.map((row) => ({
@@ -75,6 +88,7 @@ const getRevenueReport = async (req, res) => {
       summary:        totals[0],
       by_room_type:   revenueByTypeWithPct,
       daily_revenue:  dailyRevenue,
+      by_payment_method: revenueByPaymentMethod,
     });
   } catch (err) {
     console.error('[reportController.getRevenueReport]', err);

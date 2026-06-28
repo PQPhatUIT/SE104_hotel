@@ -50,6 +50,8 @@ const createAccount = async (req, res) => {
     return res.status(400).json({ message: 'role không hợp lệ.' });
   if (password.length < 8)
     return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 8 ký tự.' });
+  if (!/(?=.*[a-zA-Z])(?=.*\d)/.test(password))
+    return res.status(400).json({ message: 'Mật khẩu phải chứa cả chữ và số.' });
 
   try {
     const hash   = await bcrypt.hash(password, 10);
@@ -137,6 +139,8 @@ const register = async (req, res) => {
     return res.status(400).json({ message: 'Thiếu thông tin bắt buộc.' });
   if (password.length < 8)
     return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 8 ký tự.' });
+  if (!/(?=.*[a-zA-Z])(?=.*\d)/.test(password))
+    return res.status(400).json({ message: 'Mật khẩu phải chứa cả chữ và số.' });
 
   try {
     // Kiểm tra trùng username
