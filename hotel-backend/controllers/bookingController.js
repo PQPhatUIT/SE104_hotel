@@ -26,7 +26,7 @@ const getBookings = async (req, res) => {
     const rows = await db.query(
       `SELECT
          b.booking_id, b.check_in_date, b.check_out_date,
-         b.actual_guests, b.deposit_amount, b.status, b.created_at,
+         b.actual_guests, b.deposit_amount, b.status, b.created_at, b.note,
          DATEDIFF(b.check_out_date, b.check_in_date) AS nights,
          c.customer_id, c.full_name AS customer_name, c.phone AS customer_phone,
          c.id_card,
@@ -96,10 +96,10 @@ const createBooking = async (req, res) => {
     const insertResult = await t.query(
       `INSERT INTO Bookings
          (customer_id, room_id, created_by, check_in_date, check_out_date,
-          actual_guests, deposit_amount, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
+          actual_guests, deposit_amount, status, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)`,
       [parseInt(customer_id,10), parseInt(room_id,10), req.user?.id ? parseInt(req.user.id, 10) : null,
-       check_in_date, check_out_date, parseInt(actual_guests,10), parseFloat(deposit_amount)]
+       check_in_date, check_out_date, parseInt(actual_guests,10), parseFloat(deposit_amount), note || null]
     );
 
     // Phòng giữ nguyên 'available' — chỉ đổi sang 'occupied' khi thực sự check-in
