@@ -21,7 +21,7 @@ const getRooms = async (req, res) => {
 
     const rows = await db.query(
       `SELECT r.room_id, r.room_number, r.room_type_id,
-              r.status, r.updated_at,
+              r.status, r.updated_at, r.notes,
               rt.type_name, rt.base_price, rt.max_occupancy, rt.description AS type_description
        FROM Rooms r
        JOIN Room_Types rt ON r.room_type_id = rt.room_type_id
@@ -88,7 +88,7 @@ const getRoomById = async (req, res) => {
 
 // PATCH /api/rooms/:id/status
 const updateRoomStatus = async (req, res) => {
-  const { status } = req.body;
+  const { status, notes } = req.body;
   const roomId = parseInt(req.params.id, 10);
 
   // Quản lý chỉ được thao tác 2 chiều: available ↔ maintenance
@@ -124,6 +124,13 @@ const updateRoomStatus = async (req, res) => {
       return res.status(400).json({ message: 'Chỉ có thể đưa vào bảo trì khi phòng đang Trống.' });
     }
 
+    // Thay đổi ghi chú phòng
+    if (notes !== undefined) {
+    await db.query('UPDATE Rooms SET status = ?, notes = ?, updated_at = NOW() WHERE room_id = ?', [status, notes, roomId]);
+    } else {
+    await db.query('UPDATE Rooms SET status = ?, updated_at = NOW() WHERE room_id = ?', [status, roomId]);
+    }
+    
     await db.query('UPDATE Rooms SET status = ?, updated_at = NOW() WHERE room_id = ?', [status, roomId]);
     res.json({ message: 'Cập nhật trạng thái phòng thành công.', room_id: req.params.id, status });
   } catch (err) {
@@ -240,9 +247,9 @@ const updateRoom = async (req, res) => {
   }
 };
 
-// POST /api/room-types — tạo hạng phòng mới
+// POST /api/room-types
 const createRoomType = async (req, res) => {
-  const { type_name, base_price, max_occupancy = 2, description } = req.body;
+  const { type_name, base_price, max_occupancy = 2, description, image, amenities } = req.body;
 
   if (!type_name || base_price === undefined) {
     return res.status(400).json({ message: 'Thiếu thông tin bắt buộc: type_name, base_price.' });
@@ -253,8 +260,8 @@ const createRoomType = async (req, res) => {
 
   try {
     const result = await db.query(
-      'INSERT INTO Room_Types (type_name, base_price, max_occupancy, description) VALUES (?, ?, ?, ?)',
-      [type_name.trim(), Number(base_price), parseInt(max_occupancy, 10), description || null]
+      'INSERT INTO Room_Types (type_name, base_price, max_occupancy, description, image, amenities) VALUES (?, ?, ?, ?, ?, ?)',
+      [type_name.trim(), Number(base_price), parseInt(max_occupancy, 10), description || null, image || null, amenities || null]
     );
     res.status(201).json({ message: 'Tạo hạng phòng thành công.', room_type_id: result.insertId });
   } catch (err) {
@@ -262,14 +269,14 @@ const createRoomType = async (req, res) => {
       return res.status(409).json({ message: `Hạng phòng "${type_name}" đã tồn tại.` });
     }
     console.error('[roomController.createRoomType]', err);
-    res.status(500).json({ message: 'Lỗi server.' });
+    res.status(500).json({ message: 'Lỗi server khi tạo hạng phòng.' });
   }
 };
 
-// PATCH /api/room-types/:id — sửa hạng phòng
+// PATCH /api/room-types/:id
 const updateRoomType = async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { type_name, base_price, max_occupancy, description } = req.body;
+  const { type_name, base_price, max_occupancy, description, image, amenities } = req.body;
 
   const fields = [];
   const params = [];
@@ -278,11 +285,10 @@ const updateRoomType = async (req, res) => {
   if (base_price    !== undefined) { fields.push('base_price = ?');     params.push(Number(base_price)); }
   if (max_occupancy !== undefined) { fields.push('max_occupancy = ?'); params.push(parseInt(max_occupancy, 10)); }
   if (description   !== undefined) { fields.push('description = ?');   params.push(description); }
+  if (image         !== undefined) { fields.push('image = ?');         params.push(image); }
+  if (amenities     !== undefined) { fields.push('amenities = ?');     params.push(amenities); }
 
   if (!fields.length) return res.status(400).json({ message: 'Không có thông tin nào để cập nhật.' });
-  if (base_price !== undefined && Number(base_price) <= 0) {
-    return res.status(400).json({ message: 'base_price phải lớn hơn 0.' });
-  }
 
   try {
     params.push(id);
@@ -297,7 +303,7 @@ const updateRoomType = async (req, res) => {
       return res.status(409).json({ message: `Tên hạng phòng "${type_name}" đã tồn tại.` });
     }
     console.error('[roomController.updateRoomType]', err);
-    res.status(500).json({ message: 'Lỗi server.' });
+    res.status(500).json({ message: 'Lỗi server khi cập nhật hạng phòng.' });
   }
 };
 
